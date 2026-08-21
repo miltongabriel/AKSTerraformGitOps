@@ -37,7 +37,7 @@ resource "kubectl_manifest" "argocd_project" {
         - '${var.argocd_project_repo_url}'
       destinations:
         - server: 'https://kubernetes.default.svc'
-          namespace: argocd
+          namespace: '*'
       namespaceResourceWhitelist:
         - group: '*'
           kind: '*'
