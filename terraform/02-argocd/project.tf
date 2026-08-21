@@ -24,6 +24,35 @@ resource "kubernetes_secret_v1" "project_repo_secret" {
   depends_on = [kubernetes_namespace_v1.argocd]
 }
 
+resource "kubectl_manifest" "argocd_project" {
+  yaml_body = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: AppProject
+    metadata:
+      name: ${var.argocd_project_name}
+      namespace: argocd
+    spec:
+      description: 'Applications for the ${var.argocd_project_name} GitOps project'
+      sourceRepos:
+        - '${var.argocd_project_repo_url}'
+      destinations:
+        - server: 'https://kubernetes.default.svc'
+          namespace: argocd
+        - server: 'https://kubernetes.default.svc'
+          namespace: mywebapp
+        - server: 'https://kubernetes.default.svc'
+          namespace: mywebapp2
+      clusterResourceWhitelist:
+        - group: ''
+          kind: Namespace
+      namespaceResourceWhitelist:
+        - group: '*'
+          kind: '*'
+  YAML
+
+  depends_on = [helm_release.argocd]
+}
+
 resource "kubectl_manifest" "argocd_root_app" {
   yaml_body = <<-YAML
     apiVersion: argoproj.io/v1alpha1
@@ -32,7 +61,7 @@ resource "kubectl_manifest" "argocd_root_app" {
       name: root-app
       namespace: argocd
     spec:
-      project: default
+      project: ${var.argocd_project_name}
       source:
         repoURL: '${var.argocd_project_repo_url}'
         targetRevision: HEAD
@@ -48,6 +77,7 @@ resource "kubectl_manifest" "argocd_root_app" {
 
   depends_on = [
     helm_release.argocd,
-    kubernetes_secret_v1.project_repo_secret
+    kubernetes_secret_v1.project_repo_secret,
+    kubectl_manifest.argocd_project
   ]
 }

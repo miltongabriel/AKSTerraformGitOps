@@ -3,8 +3,9 @@ kind: Application
 metadata:
   name: mywebapp2
   namespace: argocd
-spec: 
-  project: default
+spec:
+  # Must match var.argocd_project_name (terraform/02-argocd), which creates this AppProject.
+  project: webapp
   source: 
     repoURL: git@github.com:miltongabriel/AKSTerraformGitOps.git
     targetRevision: HEAD
