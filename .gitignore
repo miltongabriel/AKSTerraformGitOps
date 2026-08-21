@@ -1,0 +1,9 @@
+*.terraform*
+!.terraform.lock.hcl
+*.tfconfig
+*.tfvars
+!example*
+*.tfstate*
+*.tfplan
+*.vscode
+*ssh-key*
