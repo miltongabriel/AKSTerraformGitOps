@@ -17,12 +17,12 @@ resource "helm_release" "argocd" {
   set = [
     # Uncomment the following lines to expose ArgoCD server via LoadBalancer (not recommended for production)
     # {
-  #     name  = "server.service.type"
-  #     value = "LoadBalancer"
+    #     name  = "server.service.type"
+    #     value = "LoadBalancer"
     # },
     # {
-  #     name  = "server.service.loadBalancerSourceRanges"
-  #     value = "{0.0.0.0/0}"
+    #     name  = "server.service.loadBalancerSourceRanges"
+    #     value = "{0.0.0.0/0}"
     # },
     {
       name  = "configs.params.server.insecure"
@@ -34,19 +34,19 @@ resource "helm_release" "argocd" {
     },
     {
       name  = "server.resources.limits.cpu"
-      value = "500m"                
+      value = "500m"
     },
     {
       name  = "server.resources.limits.memory"
-      value = "512Mi"                
+      value = "512Mi"
     },
     {
       name  = "server.resources.requests.cpu"
-      value = "250m"                
+      value = "250m"
     },
     {
       name  = "server.resources.requests.memory"
-      value = "256Mi"                
+      value = "256Mi"
     }
   ]
 

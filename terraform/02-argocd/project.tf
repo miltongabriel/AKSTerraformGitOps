@@ -14,9 +14,9 @@ resource "kubernetes_secret_v1" "project_repo_secret" {
   }
 
   data = {
-    type            = "git"
-    url             = var.argocd_project_repo_url
-    sshPrivateKey   = local.argocd_repo_ssh_private_key
+    type          = "git"
+    url           = var.argocd_project_repo_url
+    sshPrivateKey = local.argocd_repo_ssh_private_key
   }
 
   type = "Opaque"
