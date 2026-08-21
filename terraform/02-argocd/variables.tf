@@ -36,8 +36,14 @@ variable "argocd_project_repo_url" {
 }
 
 variable "argocd_project_path" {
-  description = "Path to the project within the repository"
+  description = "Path (inside the repository) that the root Application (App-of-Apps) syncs, e.g. \"argocd\""
   type        = string
+}
+
+variable "argocd_chart_version" {
+  description = "Version of the argo/argo-cd Helm chart to install (pinned for reproducible deploys)"
+  type        = string
+  default     = "10.4.0"
 }
 
 variable "argocd_project_name" {
@@ -48,4 +54,5 @@ variable "argocd_project_name" {
 variable "argocd_project_ssh_private_key_path" {
   description = "Path to the SSH private key for the project repository"
   type        = string
+  sensitive   = true
 }

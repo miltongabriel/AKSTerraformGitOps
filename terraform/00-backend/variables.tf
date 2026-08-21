@@ -6,7 +6,7 @@ variable "environment" {
 variable "project_name" {
   description = "Name prefix applied to all resources and tags"
   type        = string
-  default     = "aws-terraform-iac"
+  default     = "aksgitops"
 }
 
 variable "location" {

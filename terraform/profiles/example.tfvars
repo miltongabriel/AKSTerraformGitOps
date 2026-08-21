@@ -7,6 +7,6 @@ aks_default_node_pool_vm_size       =   "Standard_B2pls_v2" #Cheapest found in f
 aks_k8s_version                     =   "1.35.7"
 argocd_namespace                    =   "argocd"
 argocd_project_repo_url             =   "git@github.com:organization/repository.git"
-argocd_project_path                 =   "k8s"
+argocd_project_path                 =   "argocd"
 argocd_project_name                 =   "webapp"
 argocd_project_ssh_private_key_path =   "Wherever/you/keep/your/private/key" #This is the private key that has access to the repo. It should be in a secure location and not committed to source control.

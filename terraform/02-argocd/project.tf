@@ -1,3 +1,9 @@
+locals {
+  # Wrapped in sensitive() so the private key content (not just the file path) is treated as
+  # sensitive by the Terraform CLI/plan output, not only the state file.
+  argocd_repo_ssh_private_key = sensitive(file(var.argocd_project_ssh_private_key_path))
+}
+
 resource "kubernetes_secret_v1" "project_repo_secret" {
   metadata {
     name      = "${var.argocd_project_name}-repo-secret"
@@ -10,7 +16,7 @@ resource "kubernetes_secret_v1" "project_repo_secret" {
   data = {
     type            = "git"
     url             = var.argocd_project_repo_url
-    sshPrivateKey   = file(var.argocd_project_ssh_private_key_path)
+    sshPrivateKey   = local.argocd_repo_ssh_private_key
   }
 
   type = "Opaque"
@@ -28,9 +34,9 @@ resource "kubectl_manifest" "argocd_root_app" {
     spec:
       project: default
       source:
-        repoURL: 'git@github.com:miltongabriel/AKSTerraformGitOps.git'
+        repoURL: '${var.argocd_project_repo_url}'
         targetRevision: HEAD
-        path: argocd/
+        path: '${var.argocd_project_path}'
       destination:
         server: 'https://kubernetes.default.svc'
         namespace: argocd
