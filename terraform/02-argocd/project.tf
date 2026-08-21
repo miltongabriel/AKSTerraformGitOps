@@ -38,13 +38,6 @@ resource "kubectl_manifest" "argocd_project" {
       destinations:
         - server: 'https://kubernetes.default.svc'
           namespace: argocd
-        - server: 'https://kubernetes.default.svc'
-          namespace: mywebapp
-        - server: 'https://kubernetes.default.svc'
-          namespace: mywebapp2
-      clusterResourceWhitelist:
-        - group: ''
-          kind: Namespace
       namespaceResourceWhitelist:
         - group: '*'
           kind: '*'
