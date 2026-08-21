@@ -1,0 +1,12 @@
+environment                         =   "ENV"
+project_name                        =   "PROJ_NAME"
+location                            =   "LOC"
+subscription_id                     =   "00000000-0000-0000-0000-000000000000"
+tenant_id                           =   "00000000-0000-0000-0000-000000000000"
+aks_default_node_pool_vm_size       =   "Standard_B2pls_v2" #Cheapest found in free tier
+aks_k8s_version                     =   "1.35.7"
+argocd_namespace                    =   "argocd"
+argocd_project_repo_url             =   "git@github.com:organization/repository.git"
+argocd_project_path                 =   "k8s"
+argocd_project_name                 =   "webapp"
+argocd_project_ssh_private_key_path =   "Wherever/you/keep/your/private/key" #This is the private key that has access to the repo. It should be in a secure location and not committed to source control.
