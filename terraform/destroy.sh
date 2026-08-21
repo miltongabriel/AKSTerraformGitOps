@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 OLD_PATH="${PWD}"
 ENVIRONMENT="${2:-$ENVIRONMENT}"
 
@@ -19,11 +21,11 @@ fi
 
 for STEP_DIR in $(find . -type d -iname '[0-9][0-9]-*' | grep -v "00-backend"); do
   echo "-----------------------------------------------"
-  echo -e "\n\n Destroying Terraform step: $i \n\n"
+  echo -e "\n\n Destroying Terraform step: $STEP_DIR \n\n"
   echo "-----------------------------------------------"
   sleep 5
   cd "${STEP_DIR}"
-  terraform destroy -var-file=../profiles/${ENVIRONMENT}.tfvars
   terraform init -compact-warnings -reconfigure --backend-config=../profiles/${ENVIRONMENT}.tfconfig
+  terraform destroy -var-file=../profiles/${ENVIRONMENT}.tfvars
   cd "${OLD_PATH}"
 done
