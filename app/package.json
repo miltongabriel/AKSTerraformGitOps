@@ -1,0 +1,17 @@
+{
+  "name": "study-api",
+  "version": "1.0.0",
+  "description": "API simples em Node.js/Express usada apenas para estudo de pipelines de CI/CD",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
