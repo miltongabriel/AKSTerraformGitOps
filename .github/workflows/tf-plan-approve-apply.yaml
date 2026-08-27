@@ -40,7 +40,7 @@ jobs:
     name: 'Terraform Plan'
     environment: 'dev'
     needs: detect-changes
-    if: needs.detect-changes.outputs.changed_folders.terraform == 'true'
+    if: contains(fromJSON(needs.detect-changes.outputs.changed_folders), 'terraform')
     runs-on: ubuntu-latest
     strategy:
         matrix:
