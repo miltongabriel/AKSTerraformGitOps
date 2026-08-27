@@ -6,6 +6,12 @@ STEP_DIR=${1:-}
 ENVIRONMENT="${2:-$ENVIRONMENT}"
 OLD_PATH="${PWD}"
 
+export TF_PLUGIN_CACHE_DIR="$(git rev-parse --show-toplevel)/terraform/.terraform.d/plugin-cache"
+
+if [[ ! -d "${TF_PLUGIN_CACHE_DIR}" ]]; then
+  mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+fi
+
 if [[ -z "${ENVIRONMENT}" ]]; then
   echo "Error: ENVIRONMENT is not set. Please provide the environment name."
   exit 1
