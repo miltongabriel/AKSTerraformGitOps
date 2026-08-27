@@ -27,20 +27,60 @@ jobs:
       changed_folders: ${{ steps.filter.outputs.changes }}
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # Folder-agnostic: discovers which top-level module folders under
+      # terraform/ (terraform/<module>/**/*.tf) changed, without needing
+      # their names hardcoded - so this job is reusable as-is across repos
+      # with a different set of module folders.
       - name: Check for Folder Changes
         id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            terraform: 'terraform/**/*.tf'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          event="${{ github.event_name }}"
+
+          if [ "$event" = "workflow_dispatch" ]; then
+            # No previous ref to diff against on a manual run: treat every
+            # tracked .tf file under terraform/ as in-scope.
+            changed_files=$(git ls-tree -r --name-only HEAD -- terraform)
+          else
+            if [ "$event" = "pull_request" ]; then
+              base="${{ github.event.pull_request.base.sha }}"
+            else
+              base="${{ github.event.before }}"
+            fi
+            head="${{ github.sha }}"
+
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then
+              base=$(git rev-parse "$head"^ 2>/dev/null || echo "")
+            fi
+
+            if [ -z "$base" ]; then
+              changed_files=$(git ls-tree -r --name-only "$head" -- terraform)
+            else
+              changed_files=$(git diff --name-only "$base" "$head" -- terraform)
+            fi
+          fi
+
+          folders=$(printf '%s\n' "$changed_files" \
+            | grep -E '^terraform/[^/]+/.*\.tf$' \
+            | cut -d/ -f2 \
+            | sort -u || true)
+
+          json=$(printf '%s\n' "$folders" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "changes=$json" >> "$GITHUB_OUTPUT"
+          echo "Detected changed Terraform folders: $json"
 
   infra_plan:
     name: 'Terraform Plan'
     environment: 'dev'
     needs: detect-changes
-    if: contains(fromJSON(needs.detect-changes.outputs.changed_folders), 'terraform')
+    if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
     strategy:
         matrix:
@@ -48,7 +88,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ${{ matrix.step }}
+        working-directory: terraform/${{ matrix.step }}
         
     steps:
       - name: Checkout Repo
