@@ -48,7 +48,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: terraform/${{ matrix.step }}
+        working-directory: ${{ matrix.step }}
         
     steps:
       - name: Checkout Repo
