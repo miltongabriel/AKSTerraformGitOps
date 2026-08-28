@@ -69,7 +69,7 @@ jobs:
 
   infra_plan:
     name: 'Terraform Plan'
-    environment: 'dev'
+    environment: 'dev-plan'
     needs: detect-changes
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
