@@ -1,56 +1,50 @@
 name: CI
 
-# Lightweight checks for a study lab: format/syntax validation only, no plan/apply
-# (that would need real Azure credentials). Runs on PRs touching terraform/ or the
-# plain Kubernetes manifests.
+# Validates the non-Terraform parts of the repo on every PR: the app's test
+# suite and the plain Kubernetes manifests. Terraform fmt/validate/plan lives
+# in tf-plan-approve-apply.yaml instead, since that needs live Azure auth.
 
 on:
   pull_request:
     paths:
-      - "terraform/**"
+      - "app/**"
       - "k8s/**"
-      - "mySecondWebApp/**"
       - ".github/workflows/ci.yml"
   workflow_dispatch: {}
 
 jobs:
-  terraform:
-    name: terraform fmt/validate (${{ matrix.step }})
+  app-tests:
+    name: app test suite
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        step: [00-backend, 01-aks, 02-argocd]
     defaults:
       run:
-        working-directory: terraform/${{ matrix.step }}
+        working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          terraform_version: "1.15.8"
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
 
-      - name: terraform fmt -check
-        run: terraform fmt -check -diff
+      - name: npm ci
+        run: npm ci
 
-      - name: terraform init (no backend, no live credentials needed)
-        run: terraform init -backend=false -input=false
-
-      - name: terraform validate
-        run: terraform validate
+      - name: npm test
+        run: npm test
 
   k8s-manifests:
     name: lint plain Kubernetes manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install kubeconform
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
             | tar -xz -C /usr/local/bin kubeconform
 
-      - name: Validate k8s/ and mySecondWebApp/ manifests
+      - name: Validate k8s/ manifests
         run: |
-          kubeconform -strict -summary k8s/*.yaml mySecondWebApp/*.yaml
+          kubeconform -strict -summary k8s/*.yaml
