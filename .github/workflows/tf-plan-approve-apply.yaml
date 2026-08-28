@@ -116,8 +116,6 @@ jobs:
         id: init
         run: |
           terraform init \
-          -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-          -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
           -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
           -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
@@ -197,8 +195,6 @@ jobs:
         id: init
         run: |
           terraform init \
-          -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-          -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
           -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
           -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
