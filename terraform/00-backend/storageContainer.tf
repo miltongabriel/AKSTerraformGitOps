@@ -13,6 +13,10 @@ resource "azurerm_storage_account" "terraform_state" {
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   blob_properties {
     versioning_enabled = true
 
