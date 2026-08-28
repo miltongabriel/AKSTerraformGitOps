@@ -18,31 +18,31 @@ spec:
     spec:
       terminationGracePeriodSeconds: 30
       containers:
-      - name: study-api
-        image: gbenettiregistry.azurecr.io/study-api:5624be5e101b45b3877f21f29d09cf1f9cb933b5
-        ports:
-        - name: http
-          containerPort: 3000
-          protocol: TCP
-        env:
-        - name: PORT
-          value: "3000"
-        resources:
-          requests:
-            cpu: 10m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 256Mi
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 15
-          periodSeconds: 20
+        - name: study-api
+          image: gbenettiregistry.azurecr.io/study-api:e840d5fa10670bafc6466a764ebe8f3384363ffb
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
