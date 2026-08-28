@@ -5,14 +5,10 @@ on:
     branches: [ "main" ]
     paths:
       - "terraform/**/*.tf"
-  pull_request:
-    branches: [ "env/*" ]
-    types: [ closed ]
   workflow_dispatch: {}
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   id-token: write
 
 env:
@@ -21,7 +17,6 @@ env:
 jobs:
   detect-changes:
     name: 'Detect Changes'
-    environment: 'dev'
     runs-on: ubuntu-latest
     outputs:
       changed_folders: ${{ steps.filter.outputs.changes }}
@@ -48,11 +43,7 @@ jobs:
             # tracked .tf file under terraform/ as in-scope.
             changed_files=$(git ls-tree -r --name-only HEAD -- terraform)
           else
-            if [ "$event" = "pull_request" ]; then
-              base="${{ github.event.pull_request.base.sha }}"
-            else
-              base="${{ github.event.before }}"
-            fi
+            base="${{ github.event.before }}"
             head="${{ github.sha }}"
 
             if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then
@@ -89,10 +80,10 @@ jobs:
       run:
         shell: bash
         working-directory: terraform/${{ matrix.step }}
-        
+
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
@@ -127,8 +118,8 @@ jobs:
           terraform init \
           -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
           -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
-          -backend-config="container_name=${{ vars.AZURE_CONTAINER_NAME }}" \
-          -backend-config="resource_group_name=${{ vars.AZURE_RESOURCE_GROUP_NAME }}" \
+          -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
+          -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
           -input=false
 
@@ -138,43 +129,52 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -out=tfplan && terraform show -no-color tfplan
+        run: terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -out=tfplan
+
+      - name: Publish Plan to Job Summary
+        run: |
+          {
+            echo "## 📋 Terraform Plan — ${{ matrix.step }}"
+            echo '```hcl'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Plan Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan
-          path: tfplan
+          name: tfplan-${{ matrix.step }}
+          path: terraform/${{ matrix.step }}/tfplan
           retention-days: 1 # Keep it short-lived for security
 
-      - name: Create Release Branch and PR with Plan
-        if: steps.plan.outcome == 'success'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: env/${{ vars.ENVIRONMENT_NAME }}-approval
-          base: main
-          title: "🚀 Approval Request for ${{ vars.ENVIRONMENT_NAME }}"
-          commit-message: "Chore: release main to ${{ vars.ENVIRONMENT_NAME }}"
-          body: |
-              ## ⚠️ Terraform Plan Summary
-              Review the exact infrastructure changes generated from `main` below before approving this deployment.
-
-              <details><summary><b>Click to expand full Terraform Plan output</b></summary>
-
-              ```hcl
-              ${{ steps.plan.outputs.stdout }}
-              ```
-
-              </details>
-
-  apply-on-approval:
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.head_ref, 'env/')
+  infra_apply:
+    name: 'Terraform Apply'
+    # This environment must have "Required reviewers" configured
+    # (Settings -> Environments -> dev-apply) so this job pauses for
+    # manual approval. It is deliberately a different environment than
+    # `dev` above, so the unattended plan job is never gated.
+    environment: 'dev-apply'
+    needs: [detect-changes, infra_plan]
+    if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
-    environment: dev
+    strategy:
+        matrix:
+            step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/${{ matrix.step }}
+
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create Plugin Cache Directory
         run: mkdir -p ${{ env.TF_PLUGIN_CACHE_DIR }}
@@ -192,20 +192,24 @@ jobs:
         with:
           terraform_version: "1.15.8"
 
-      - name: Terraform Format
-        id: fmt
-        run: terraform fmt -recursive -check
-
       - name: Terraform Init
         id: init
         run: |
           terraform init \
           -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
           -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
-          -backend-config="container_name=${{ vars.AZURE_CONTAINER_NAME }}" \
-          -backend-config="resource_group_name=${{ vars.AZURE_RESOURCE_GROUP_NAME }}" \
+          -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
+          -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
           -input=false
 
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ matrix.step }}
+          path: terraform/${{ matrix.step }}
+
+      # Applies the exact plan that was reviewed in the Job Summary above -
+      # not a fresh re-plan - so what got approved is what gets applied.
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: terraform apply -input=false -auto-approve tfplan
