@@ -35,19 +35,15 @@ In short, this is a learning project covering the full pipeline: **Infrastructur
 
 ```
 AKSTerraformGitOps/
-├── argocd/                              # ArgoCD "child" Application manifests (App-of-Apps)
-│   ├── mywebapp_argocd_application.yaml     → points to k8s/, namespace "mywebapp"
-│   └── mywebapp2_argocd_application.yaml    → points to mySecondWebApp/, namespace "mywebapp2"
+├── app/                                 # "study-api": Node.js API, containerized and pushed to ACR by build-push-app.yml
+│   ├── server.js
+│   ├── test.js
+│   ├── Dockerfile
+│   └── package.json
 │
-├── k8s/                                 # App 1: static nginx site
-│   ├── nginx-deployment.yaml                # Deployment (2 replicas, probes, limits, securityContext)
-│   ├── nginx-configmap.yaml                 # index.html injected via ConfigMap
-│   └── frontend-lb-service.yaml             # LoadBalancer Service
-│
-├── mySecondWebApp/                      # App 2: second example app managed by ArgoCD (same hardening as App 1)
-│   ├── nginx-deployment.yaml
-│   ├── nginx-configmap.yaml
-│   └── frontend-lb-service.yaml
+├── k8s/                                 # study-api manifests — the path ArgoCD's root Application syncs directly
+│   ├── deployment.yaml                      # Deployment (2 replicas, probes, resource limits)
+│   └── service.yaml                         # LoadBalancer Service
 │
 ├── bootstrap/                           # One-time manual setup, outside the CI/CD pipeline's reach (see bootstrap/README.md)
 │   ├── 00-backend/                          # Resource Group + Storage Account + Container for remote tfstate (local state — unavoidable)
@@ -57,7 +53,7 @@ AKSTerraformGitOps/
 │
 ├── terraform/                           # Infrastructure as code, split into numbered "steps", pipeline-managed
 │   ├── 01-aks/                              # AKS cluster (node pool, RBAC, managed identity)
-│   ├── 02-argocd/                           # ArgoCD Helm release + Git repo secret + AppProject + root Application
+│   ├── 02-argocd/                           # ArgoCD Helm release + Git repo secret + AppProject + root Application (syncs k8s/ directly)
 │   ├── profiles/                            # Per-environment variables
 │   │   ├── example.tfvars / example.tfconfig    # Tracked placeholders — copy to dev.* before first use
 │   │   ├── dev.tfvars                           # Input values (subscription, region, versions, etc.) — git-ignored
@@ -65,6 +61,7 @@ AKSTerraformGitOps/
 │   ├── run.sh                               # Helper: `init` + `apply` one step for a given environment
 │   └── destroy.sh                           # Helper: `destroy` every step
 │
+├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push image), ci.yml (app/ tests + k8s/ lint), tf-plan-approve-apply.yaml (terraform/ plan+apply)
 ├── argocd-ssh-key / argocd-ssh-key.pub  # SSH keypair ArgoCD uses to read this repo (git-ignored)
 └── .gitignore
 ```
@@ -197,19 +194,15 @@ Ou seja, é um projeto de aprendizado que cobre a esteira completa: **Infraestru
 
 ```
 AKSTerraformGitOps/
-├── argocd/                              # Manifests das Applications "filhas" do ArgoCD (App-of-Apps)
-│   ├── mywebapp_argocd_application.yaml     → aponta para k8s/, namespace "mywebapp"
-│   └── mywebapp2_argocd_application.yaml    → aponta para mySecondWebApp/, namespace "mywebapp2"
+├── app/                                 # "study-api": API em Node.js, containerizada e enviada ao ACR pelo build-push-app.yml
+│   ├── server.js
+│   ├── test.js
+│   ├── Dockerfile
+│   └── package.json
 │
-├── k8s/                                 # App 1: nginx estático
-│   ├── nginx-deployment.yaml                # Deployment (2 réplicas, probes, limits, securityContext)
-│   ├── nginx-configmap.yaml                 # index.html injetado via ConfigMap
-│   └── frontend-lb-service.yaml             # Service tipo LoadBalancer
-│
-├── mySecondWebApp/                      # App 2: segundo exemplo de app gerenciado pelo ArgoCD (mesmo hardening do App 1)
-│   ├── nginx-deployment.yaml
-│   ├── nginx-configmap.yaml
-│   └── frontend-lb-service.yaml
+├── k8s/                                 # Manifests do study-api — o caminho que a Application "root" do ArgoCD sincroniza direto
+│   ├── deployment.yaml                      # Deployment (2 réplicas, probes, limites de recursos)
+│   └── service.yaml                         # Service tipo LoadBalancer
 │
 ├── bootstrap/                           # Configuração manual única, fora do alcance do pipeline de CI/CD (veja bootstrap/README.md)
 │   ├── 00-backend/                          # Resource Group + Storage Account + Container p/ o tfstate remoto (state local — inevitável)
@@ -219,7 +212,7 @@ AKSTerraformGitOps/
 │
 ├── terraform/                           # Infraestrutura como código, em "steps" numerados, gerenciada pelo pipeline
 │   ├── 01-aks/                              # Cluster AKS (node pool, RBAC, identidade gerenciada)
-│   ├── 02-argocd/                           # Helm release do ArgoCD + secret do repo Git + AppProject + Application "root"
+│   ├── 02-argocd/                           # Helm release do ArgoCD + secret do repo Git + AppProject + Application "root" (sincroniza k8s/ direto)
 │   ├── profiles/                            # Variáveis por ambiente
 │   │   ├── example.tfvars / example.tfconfig    # Templates versionados — copiar para dev.* antes do primeiro uso
 │   │   ├── dev.tfvars                           # Valores de entrada (subscription, região, versões, etc.) — git-ignorado
@@ -227,6 +220,7 @@ AKSTerraformGitOps/
 │   ├── run.sh                               # Helper: `init` + `apply` de um step para um ambiente
 │   └── destroy.sh                           # Helper: `destroy` de todos os steps
 │
+├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push da imagem), ci.yml (testes do app/ + lint do k8s/), tf-plan-approve-apply.yaml (plan+apply do terraform/)
 ├── argocd-ssh-key / argocd-ssh-key.pub  # Par de chaves SSH usado pelo ArgoCD p/ ler este repositório (git-ignoradas)
 └── .gitignore
 ```
