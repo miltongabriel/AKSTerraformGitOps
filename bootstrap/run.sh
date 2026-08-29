@@ -28,6 +28,12 @@ if [[ ! -d "${STEP_DIR}" ]]; then
 fi
 
 cd "${STEP_DIR}"
-terraform init -compact-warnings -reconfigure --backend-config=../profiles/${ENVIRONMENT}.tfconfig
-terraform apply -compact-warnings -var-file=../profiles/${ENVIRONMENT}.tfvars
+if [[ "${STEP_DIR}" == "00-backend"* ]]; then
+  # The only step with no remote backend to point at yet — it's the one that
+  # creates the storage account every other step (here and in terraform/) uses.
+  terraform init -reconfigure
+else
+  terraform init -compact-warnings -reconfigure --backend-config=../../terraform/profiles/${ENVIRONMENT}.tfconfig
+fi
+terraform apply -compact-warnings -var-file=../../terraform/profiles/${ENVIRONMENT}.tfvars
 cd "${OLD_PATH}"
