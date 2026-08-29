@@ -10,7 +10,7 @@ if [[ -z "${ENVIRONMENT}" ]]; then
   exit 1
 fi
 
-find . -type d -iname '[0-9][0-9]-*' | grep -v "00-backend"
+find . -type d -iname '[0-9][0-9]-*'
 echo "Steps to be destroyed above. Please confirm by typing 'yes' to proceed:"
 read confirmation
 
@@ -19,7 +19,7 @@ if [[ "${confirmation}" != "yes" ]]; then
   exit 1
 fi
 
-for STEP_DIR in $(find . -type d -iname '[0-9][0-9]-*' | grep -v "00-backend"); do
+for STEP_DIR in $(find . -type d -iname '[0-9][0-9]-*'); do
   echo "-----------------------------------------------"
   echo -e "\n\n Destroying Terraform step: $STEP_DIR \n\n"
   echo "-----------------------------------------------"

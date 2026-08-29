@@ -22,8 +22,7 @@ Study lab / laboratório de estudo: **Terraform (IaC) + AKS (Azure Kubernetes Se
 
 This repository provisions a full Kubernetes environment on Azure from scratch and turns it into a **GitOps**-driven environment:
 
-1. **Terraform** builds the infrastructure in 3 independent layers:
-   - the remote **state backend** (an Azure Storage Account);
+1. **Terraform** builds the infrastructure: a one-time manual **bootstrap** layer (remote state backend, Container Registry, CI/CD identities — see [`bootstrap/`](bootstrap/)) followed by 2 pipeline-managed layers:
    - the **AKS** cluster;
    - the **ArgoCD** installation (via Helm) inside the cluster.
 2. ArgoCD is bootstrapped already pointing to a **root Application (App-of-Apps pattern)**, which reads the [`argocd/`](argocd/) folder of this very Git repository.
@@ -50,8 +49,13 @@ AKSTerraformGitOps/
 │   ├── nginx-configmap.yaml
 │   └── frontend-lb-service.yaml
 │
-├── terraform/                           # Infrastructure as code, split into numbered "steps"
-│   ├── 00-backend/                          # Resource Group + Storage Account + Container for remote tfstate
+├── bootstrap/                           # One-time manual setup, outside the CI/CD pipeline's reach (see bootstrap/README.md)
+│   ├── 00-backend/                          # Resource Group + Storage Account + Container for remote tfstate (local state — unavoidable)
+│   ├── 01-registry/                         # Resource Group + Container Registry (ACR)
+│   ├── 02-identities/                       # 3 GitHub Actions OIDC App Registrations (registry-push, terraform-apply, terraform-plan)
+│   └── run.sh                               # Helper: `init` + `apply` one bootstrap step for a given environment
+│
+├── terraform/                           # Infrastructure as code, split into numbered "steps", pipeline-managed
 │   ├── 01-aks/                              # AKS cluster (node pool, RBAC, managed identity)
 │   ├── 02-argocd/                           # ArgoCD Helm release + Git repo secret + AppProject + root Application
 │   ├── profiles/                            # Per-environment variables
@@ -59,7 +63,7 @@ AKSTerraformGitOps/
 │   │   ├── dev.tfvars                           # Input values (subscription, region, versions, etc.) — git-ignored
 │   │   └── dev.tfconfig                         # Remote backend configuration (state storage account) — git-ignored
 │   ├── run.sh                               # Helper: `init` + `apply` one step for a given environment
-│   └── destroy.sh                           # Helper: `destroy` every step (except the backend)
+│   └── destroy.sh                           # Helper: `destroy` every step
 │
 ├── argocd-ssh-key / argocd-ssh-key.pub  # SSH keypair ArgoCD uses to read this repo (git-ignored)
 └── .gitignore
@@ -73,8 +77,25 @@ AKSTerraformGitOps/
 - `kubectl` (to inspect the cluster and ArgoCD).
 - `git` + a Bash-compatible shell to run `run.sh`/`destroy.sh` (on Windows, Git Bash).
 - A remote Git repo (e.g. GitHub) with a read-only **Deploy Key** so ArgoCD can clone this repository over SSH.
+- For Bootstrap below: an Azure AD account with rights to create App Registrations, Service Principals, and role assignments (not just subscription-level Contributor).
+
+### Bootstrap: one-time manual setup
+
+Before the pipeline-managed `terraform/` steps below can run, someone has to create the things the pipeline itself depends on: the remote state backend, the Container Registry, and the OIDC identities the CI/CD workflows authenticate as. This lives in [`bootstrap/`](bootstrap/), deliberately **outside** `terraform/` — the pipeline's `detect-changes` job only scans `terraform/**/*.tf`, so it can never see or apply this folder (least privilege: the pipeline shouldn't be able to touch the resources that created its own backend and identities). Run it once, by hand, with an Azure AD account that can create Resource Groups, Storage Accounts, App Registrations, and role assignments:
+
+```bash
+az login
+cd bootstrap
+./run.sh 00-backend dev     # creates the remote tfstate storage account (local state for this one apply — unavoidable)
+./run.sh 01-registry dev    # creates the Resource Group + Container Registry (ACR)
+./run.sh 02-identities dev  # creates the 3 GitHub Actions OIDC App Registrations
+```
+
+Then copy the `github_secrets_setup` output from `02-identities` into the corresponding GitHub Environments (`dev-plan`, `dev-apply`) as repo secrets. See [`bootstrap/README.md`](bootstrap/README.md) for details and destroy warnings. From this point on, `terraform/01-aks` and `terraform/02-argocd` are handed off to `tf-plan-approve-apply.yaml` (plan on push to `main`, manual-approval gate before apply).
 
 ### Deployment steps
+
+> Assumes Bootstrap above has already been completed.
 
 1. **Generate the SSH key ArgoCD will use to read the repository**, and register it as a read-only *Deploy Key* on the GitHub repo:
    ```bash
@@ -96,8 +117,7 @@ AKSTerraformGitOps/
 
 4. **Apply the Terraform steps, in order**, from the `terraform/` folder:
    ```bash
-   ./run.sh 00-backend dev   # creates the remote tfstate storage account (uses local state for this first apply)
-   ./run.sh 01-aks dev       # creates the AKS cluster (using the remote backend created above)
+   ./run.sh 01-aks dev       # creates the AKS cluster (using the remote backend created during Bootstrap)
    ./run.sh 02-argocd dev    # installs ArgoCD via Helm + creates the root Application (App-of-Apps)
    ```
    (`ENVIRONMENT=dev` can also be exported as an environment variable instead of passed as the 2nd argument.)
@@ -109,7 +129,7 @@ AKSTerraformGitOps/
 
 6. From here, ArgoCD takes over: it syncs the `root-app` Application → which creates the `mywebapp` and `mywebapp2` Applications → which create the `mywebapp`/`mywebapp2` namespaces and roll out the Nginx Deployments/Services automatically.
 
-7. To **tear the environment down** (except the backend/tfstate, which has `prevent_destroy`), from `terraform/`:
+7. To **tear the environment down** (the `bootstrap/` layer is untouched — no `destroy.sh` there, by design), from `terraform/`:
    ```bash
    ./destroy.sh dev
    ```
@@ -134,7 +154,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 ### What we learned from this project
 
-- **Layered Terraform steps** (`00-backend` → `01-aks` → `02-argocd`) separate concerns and shrink the blast radius: destroying/recreating the app layer doesn't touch the cluster, and destroying the cluster doesn't touch the state backend.
+- **Layered Terraform steps** (manual `bootstrap/00-backend` → `01-registry` → `02-identities`, then pipeline-managed `terraform/01-aks` → `02-argocd`) separate concerns and shrink the blast radius: destroying/recreating the app layer doesn't touch the cluster, and destroying the cluster doesn't touch the state backend.
+- **Structural least privilege for CI/CD**: `bootstrap/` sits outside `terraform/` on purpose, so the pipeline's OIDC identity — itself created inside `bootstrap/02-identities` — can never see or apply the folder that created its own backend and identities, and separate GitHub Environments (`dev-plan`/`dev-apply`) keep the read-only plan identity's secrets apart from the apply identity's.
 - **Protected remote backend**: the state's Storage Account and Container use `prevent_destroy`, blob versioning, and delete retention — guarding against accidental state loss.
 - **ArgoCD's App-of-Apps pattern**: a single root `Application` manages other `Applications` via Git, fully declaratively — even the Git repository registration in ArgoCD is done through Terraform (a `kubernetes_secret_v1` holding the SSH key), with no manual `argocd repo add` step.
 - **Dedicated `AppProject`**: `root-app`, `mywebapp` and `mywebapp2` all belong to a project created by Terraform (named after `argocd_project_name`) instead of ArgoCD's built-in `default` project, scoping which repo/namespaces the apps are allowed to touch.
@@ -148,8 +169,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 Ideas to take this lab further, roughly in suggested order:
 
-1. **CI/CD pipeline (GitHub Actions)** — today everything is applied by hand via `run.sh`. Add a workflow that runs `terraform fmt -check`, `terraform validate` and `terraform plan` on every PR touching `terraform/`, gating `terraform apply` behind a manual approval or a merge to `main`. Pair it with a second workflow that lints the Kubernetes manifests (`kubeconform`/`kube-linter`) before ArgoCD ever sees them.
-2. **IaC & container security scanning in CI** — run `tfsec`/`checkov` on the Terraform code and `trivy`/`kube-score` on the manifests, to catch issues like the `dev.tfvars` secrets exposure automatically instead of by manual review.
+1. **Lint/scan `bootstrap/` too** — it's intentionally excluded from `tf-plan-approve-apply.yaml` for least-privilege reasons, but a separate, non-privileged, read-only workflow could still run `terraform fmt -check`/`terraform validate` (and `tfsec`/`checkov`, see below) against it in CI.
+2. **IaC & container security scanning in CI** — run `tfsec`/`checkov` on the `terraform/` code and `trivy`/`kube-score` on the manifests, to catch issues like the `dev.tfvars` secrets exposure automatically instead of by manual review.
 3. **Proper secrets management** — move `subscription_id`/`tenant_id` and the ArgoCD SSH deploy key out of local files into Azure Key Vault, consumed via the External Secrets Operator, instead of Terraform's `file()` reading a key off disk.
 4. **De-duplicate the app manifests** — `k8s/` and `mySecondWebApp/` are still maintained as two separate copies (kept in sync by hand; they already drifted once). Turning them into a Helm chart (per-app `values.yaml`) or a Kustomize base + overlays would remove the copy/paste and make future changes one-line.
 5. **Multi-environment promotion** — the `profiles/` pattern already supports it; add `test`/`prod` tfvars plus an ArgoCD `ApplicationSet` (or separate root apps) so a change promotes dev → test → prod through Git branches/PRs instead of one static `dev` environment.
@@ -163,8 +184,7 @@ Ideas to take this lab further, roughly in suggested order:
 
 Este repositório provisiona, do zero, um ambiente Kubernetes na Azure e o transforma em um ambiente **GitOps**:
 
-1. **Terraform** cria a infraestrutura em 3 camadas independentes:
-   - o *backend* remoto de estado (Storage Account no Azure);
+1. **Terraform** cria a infraestrutura: uma camada de **bootstrap** manual e única (backend remoto de estado, Container Registry, identidades do CI/CD — veja [`bootstrap/`](bootstrap/)) seguida de 2 camadas gerenciadas pelo pipeline:
    - o cluster **AKS**;
    - a instalação do **ArgoCD** (via Helm) dentro do cluster.
 2. O ArgoCD é inicializado já apontando para um **Application "root" (padrão App-of-Apps)**, que lê a pasta [`argocd/`](argocd/) do próprio repositório Git.
@@ -191,8 +211,13 @@ AKSTerraformGitOps/
 │   ├── nginx-configmap.yaml
 │   └── frontend-lb-service.yaml
 │
-├── terraform/                           # Infraestrutura como código, em "steps" numerados
-│   ├── 00-backend/                          # Resource Group + Storage Account + Container p/ o tfstate remoto
+├── bootstrap/                           # Configuração manual única, fora do alcance do pipeline de CI/CD (veja bootstrap/README.md)
+│   ├── 00-backend/                          # Resource Group + Storage Account + Container p/ o tfstate remoto (state local — inevitável)
+│   ├── 01-registry/                         # Resource Group + Container Registry (ACR)
+│   ├── 02-identities/                       # 3 App Registrations OIDC do GitHub Actions (registry-push, terraform-apply, terraform-plan)
+│   └── run.sh                               # Helper: `init` + `apply` de um step de bootstrap para um ambiente
+│
+├── terraform/                           # Infraestrutura como código, em "steps" numerados, gerenciada pelo pipeline
 │   ├── 01-aks/                              # Cluster AKS (node pool, RBAC, identidade gerenciada)
 │   ├── 02-argocd/                           # Helm release do ArgoCD + secret do repo Git + AppProject + Application "root"
 │   ├── profiles/                            # Variáveis por ambiente
@@ -200,7 +225,7 @@ AKSTerraformGitOps/
 │   │   ├── dev.tfvars                           # Valores de entrada (subscription, região, versões, etc.) — git-ignorado
 │   │   └── dev.tfconfig                         # Configuração do backend remoto (storage account do state) — git-ignorado
 │   ├── run.sh                               # Helper: `init` + `apply` de um step para um ambiente
-│   └── destroy.sh                           # Helper: `destroy` de todos os steps (exceto o backend)
+│   └── destroy.sh                           # Helper: `destroy` de todos os steps
 │
 ├── argocd-ssh-key / argocd-ssh-key.pub  # Par de chaves SSH usado pelo ArgoCD p/ ler este repositório (git-ignoradas)
 └── .gitignore
@@ -214,8 +239,25 @@ AKSTerraformGitOps/
 - `kubectl` (para inspecionar o cluster e o ArgoCD).
 - `git` + um shell compatível com Bash para rodar `run.sh`/`destroy.sh` (no Windows, Git Bash).
 - Um repositório Git remoto (ex. GitHub) com uma **chave de deploy (Deploy Key)** somente leitura, para o ArgoCD conseguir clonar este repositório via SSH.
+- Para o Bootstrap abaixo: uma conta Azure AD com permissão para criar App Registrations, Service Principals e role assignments (não basta Contributor no nível da subscription).
+
+### Bootstrap: configuração manual única
+
+Antes dos steps gerenciados pelo pipeline em `terraform/` conseguirem rodar, alguém precisa criar aquilo de que o próprio pipeline depende: o backend remoto de estado, o Container Registry e as identidades OIDC que os workflows de CI/CD usam para autenticar. Isso vive em [`bootstrap/`](bootstrap/), deliberadamente **fora** de `terraform/` — o job `detect-changes` do pipeline só varre `terraform/**/*.tf`, então nunca consegue enxergar ou aplicar essa pasta (least privilege: o pipeline não deveria conseguir tocar nos recursos que criaram o próprio backend e as próprias identidades). Rode uma vez, manualmente, com uma conta Azure AD que possa criar Resource Groups, Storage Accounts, App Registrations e role assignments:
+
+```bash
+az login
+cd bootstrap
+./run.sh 00-backend dev     # cria o storage account remoto do tfstate (state local nesse apply — inevitável)
+./run.sh 01-registry dev    # cria o Resource Group + Container Registry (ACR)
+./run.sh 02-identities dev  # cria os 3 App Registrations OIDC do GitHub Actions
+```
+
+Depois copie o output `github_secrets_setup` de `02-identities` para os GitHub Environments correspondentes (`dev-plan`, `dev-apply`) como secrets do repositório. Veja [`bootstrap/README.md`](bootstrap/README.md) para detalhes e avisos sobre destruição. A partir daqui, `terraform/01-aks` e `terraform/02-argocd` ficam a cargo do `tf-plan-approve-apply.yaml` (plan a cada push na `main`, com aprovação manual antes do apply).
 
 ### Passos para deploy
+
+> Pressupõe que o Bootstrap acima já foi concluído.
 
 1. **Gerar a chave SSH que o ArgoCD usará para ler o repositório** e cadastrá-la como *Deploy Key* (read-only) no repositório no GitHub:
    ```bash
@@ -237,8 +279,7 @@ AKSTerraformGitOps/
 
 4. **Aplicar os steps do Terraform, em ordem**, a partir da pasta `terraform/`:
    ```bash
-   ./run.sh 00-backend dev   # cria o storage account remoto do tfstate (state local nesse primeiro apply)
-   ./run.sh 01-aks dev       # cria o cluster AKS (usa o backend remoto criado acima)
+   ./run.sh 01-aks dev       # cria o cluster AKS (usa o backend remoto criado no Bootstrap)
    ./run.sh 02-argocd dev    # instala o ArgoCD via Helm + cria a Application "root" (App-of-Apps)
    ```
    (`ENVIRONMENT=dev` também pode ser exportado como variável de ambiente em vez de passado como 2º argumento.)
@@ -250,7 +291,7 @@ AKSTerraformGitOps/
 
 6. A partir daqui o ArgoCD assume: ele sincroniza a Application `root-app` → que cria as Applications `mywebapp` e `mywebapp2` → que criam os namespaces `mywebapp`/`mywebapp2` e sobem os Deployments/Services do Nginx automaticamente.
 
-7. Para **destruir o ambiente** (exceto o backend/tfstate, que tem `prevent_destroy`), a partir de `terraform/`:
+7. Para **destruir o ambiente** (a camada `bootstrap/` não é afetada — não existe `destroy.sh` lá, de propósito), a partir de `terraform/`:
    ```bash
    ./destroy.sh dev
    ```
@@ -275,7 +316,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 ### O que aprendemos com esse projeto
 
-- **Terraform em camadas/steps** (`00-backend` → `01-aks` → `02-argocd`) separa responsabilidades e reduz o "raio de explosão": destruir/recriar a aplicação não afeta o cluster, e destruir o cluster não afeta o backend do state.
+- **Terraform em camadas/steps** (`bootstrap/00-backend` → `01-registry` → `02-identities` manuais, depois `terraform/01-aks` → `02-argocd` gerenciados pelo pipeline) separa responsabilidades e reduz o "raio de explosão": destruir/recriar a aplicação não afeta o cluster, e destruir o cluster não afeta o backend do state.
+- **Least privilege estrutural para o CI/CD**: `bootstrap/` fica fora de `terraform/` de propósito, para que a identidade OIDC do pipeline — criada dentro de `bootstrap/02-identities` — nunca consiga enxergar ou aplicar a pasta que criou o próprio backend e as próprias identidades; GitHub Environments separados (`dev-plan`/`dev-apply`) mantêm os secrets da identidade read-only de plan separados dos da identidade de apply.
 - **Backend remoto com proteção**: o Storage Account e o Container do tfstate usam `prevent_destroy`, versionamento de blobs e retenção de exclusão — evitando perda acidental do state.
 - **Padrão App-of-Apps do ArgoCD**: uma única `Application` "root" gerenciando outras `Applications` via Git, tudo declarativo — inclusive o próprio cadastro do repositório Git no ArgoCD é feito via Terraform (`kubernetes_secret_v1` com a chave SSH), sem passos manuais de `argocd repo add`.
 - **`AppProject` dedicado**: `root-app`, `mywebapp` e `mywebapp2` pertencem a um projeto criado pelo Terraform (nomeado a partir de `argocd_project_name`) em vez do projeto `default` embutido do ArgoCD, restringindo repositório/namespaces que as apps podem tocar.
@@ -289,8 +331,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 Ideias para evoluir esse laboratório, em ordem sugerida:
 
-1. **Pipeline de CI/CD (GitHub Actions)** — hoje tudo é aplicado manualmente via `run.sh`. Adicionar um workflow que rode `terraform fmt -check`, `terraform validate` e `terraform plan` em todo PR que mexa em `terraform/`, deixando o `terraform apply` condicionado a uma aprovação manual ou ao merge na `main`. Complementar com um segundo workflow que faça lint dos manifests Kubernetes (`kubeconform`/`kube-linter`) antes de chegarem ao ArgoCD.
-2. **Scan de segurança de IaC e containers no CI** — rodar `tfsec`/`checkov` no código Terraform e `trivy`/`kube-score` nos manifests, para pegar automaticamente problemas como a exposição de segredos no `dev.tfvars`, em vez de depender de revisão manual.
+1. **Lint/scan também no `bootstrap/`** — ele é excluído de propósito do `tf-plan-approve-apply.yaml` por motivos de least privilege, mas um workflow separado, sem privilégios e somente leitura, poderia rodar `terraform fmt -check`/`terraform validate` (e `tfsec`/`checkov`, ver abaixo) contra ele no CI.
+2. **Scan de segurança de IaC e containers no CI** — rodar `tfsec`/`checkov` no código de `terraform/` e `trivy`/`kube-score` nos manifests, para pegar automaticamente problemas como a exposição de segredos no `dev.tfvars`, em vez de depender de revisão manual.
 3. **Gestão de segredos de verdade** — tirar `subscription_id`/`tenant_id` e a chave SSH do ArgoCD de arquivos locais e mover para o Azure Key Vault, consumidos via External Secrets Operator, em vez do Terraform ler a chave do disco com `file()`.
 4. **Eliminar duplicação dos manifests** — `k8s/` e `mySecondWebApp/` ainda são mantidas como duas cópias separadas (sincronizadas manualmente; já divergiram uma vez). Transformá-las em um Helm chart (com `values.yaml` por app) ou em uma base + overlays do Kustomize eliminaria o copy/paste e tornaria mudanças futuras questão de uma linha.
 5. **Promoção multi-ambiente** — o padrão `profiles/` já suporta isso; adicionar tfvars de `test`/`prod` e um `ApplicationSet` do ArgoCD (ou root apps separadas) para que uma mudança seja promovida dev → test → prod via branches/PRs no Git, em vez de um único ambiente `dev` estático.
