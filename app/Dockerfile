@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copia primeiro só os manifestos de dependências para aproveitar o cache de layers.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY server.js ./
 
