@@ -17,6 +17,7 @@ spec:
         app: study-api
     spec:
       terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
       containers:
         - name: study-api
           image: gbenettiregistry.azurecr.io/study-api:bc9fdabaeabb5fb821b93d92a8c727d1bc1b19f8
