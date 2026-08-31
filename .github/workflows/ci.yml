@@ -1,14 +1,18 @@
 name: CI
 
-# Validates the non-Terraform parts of the repo on every PR: the app's test
-# suite and the plain Kubernetes manifests. Terraform fmt/validate/plan lives
-# in tf-plan-approve-apply.yaml instead, since that needs live Azure auth.
+# Validates the repo on every PR. Terraform fmt/validate/plan still lives in
+# tf-plan-approve-apply.yaml, since that needs live Azure auth - but static
+# analysis (Checkov) doesn't, so it runs here for PR-time feedback across
+# both Terraform trees (terraform/ and bootstrap/), instead of only showing up
+# after merge in that pipeline's plan step.
 
 on:
   pull_request:
     paths:
       - "app/**"
       - "k8s/**"
+      - "terraform/**/*.tf"
+      - "bootstrap/**/*.tf"
       - ".github/workflows/ci.yml"
   workflow_dispatch: {}
 
@@ -48,3 +52,17 @@ jobs:
       - name: Validate k8s/ manifests
         run: |
           kubeconform -strict -summary k8s/*.yaml
+
+  terraform-checkov:
+    name: Checkov scan (terraform/ + bootstrap/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf # v12.1347.0
+        with:
+          directory: .
+          framework: terraform
+          output_format: cli
+          soft_fail: true
