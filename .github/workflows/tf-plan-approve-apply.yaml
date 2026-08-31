@@ -61,6 +61,15 @@ jobs:
             | cut -d/ -f2 \
             | sort -u || true)
 
+          # A folder can show up above via deleted .tf files (e.g. a module
+          # removed entirely in this push). Drop anything that no longer
+          # exists at HEAD so the matrix never targets a missing directory.
+          folders=$(printf '%s\n' "$folders" | while IFS= read -r f; do
+            if [ -n "$f" ] && [ -d "terraform/$f" ]; then
+              printf '%s\n' "$f"
+            fi
+          done)
+
           json=$(printf '%s\n' "$folders" | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "changes=$json" >> "$GITHUB_OUTPUT"
