@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
@@ -73,6 +72,9 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
         matrix:
             step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
@@ -156,6 +158,9 @@ jobs:
     needs: [detect-changes, infra_plan]
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
         matrix:
             step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
