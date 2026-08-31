@@ -20,7 +20,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: study-api
-          image: gbenettiregistry.azurecr.io/study-api:bc9fdabaeabb5fb821b93d92a8c727d1bc1b19f8
+          image: gbenettiregistry.azurecr.io/study-api:7cfa0d78443b60d8e2010fed77278df2000479f8
           ports:
             - name: http
               containerPort: 3000
