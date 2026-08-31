@@ -50,9 +50,3 @@ variable "argocd_project_name" {
   description = "Name for the project in Kubernetes"
   type        = string
 }
-
-variable "argocd_project_ssh_private_key_path" {
-  description = "Path to the SSH private key for the project repository"
-  type        = string
-  sensitive   = true
-}

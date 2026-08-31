@@ -38,6 +38,11 @@ data "azurerm_container_registry" "acr" {
   resource_group_name = var.acr_resource_group_name
 }
 
+data "azurerm_key_vault" "vault" {
+  name                = "kv-${var.project_name}-${var.environment}"
+  resource_group_name = local.resource_group_name
+}
+
 resource "azurerm_role_assignment" "terraform_apply_contributor" {
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Contributor"
@@ -70,16 +75,15 @@ resource "azurerm_role_assignment" "terraform_apply_rbac_admin_acr" {
   EOT
 }
 
-# O provider azurerm (v4+) passou a gerenciar recursos de dados de storage
-# (azurerm_storage_container, usado em bootstrap/00-backend) via Azure AD por
-# padrao, em vez de buscar a account key. "Contributor" so da acesso de
-# controle (ARM) na conta de storage — sem esta role de dados, o apply falha
-# com 403 AuthorizationPermissionMismatch ao criar/gerenciar o container.
-# (data source "azurerm_storage_account.terraform_state" definida em
-# terraform_plan_app.tf, reaproveitada aqui.)
 resource "azurerm_role_assignment" "terraform_apply_storage_blob_contributor" {
   count                = var.terraform_state_storage_account_exists ? 1 : 0
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Storage Blob Data Contributor"
   scope                = data.azurerm_storage_account.terraform_state[0].id
+}
+
+resource "azurerm_role_assignment" "terraform_apply_keyvault_secrets_reader" {
+  principal_id         = azuread_service_principal.terraform_apply.object_id
+  role_definition_name = "Key Vault Secrets User"
+  scope                = data.azurerm_key_vault.vault.id
 }
