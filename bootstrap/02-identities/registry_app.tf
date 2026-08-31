@@ -22,7 +22,7 @@ resource "azuread_application_federated_identity_credential" "registry_branch" {
   display_name = "gh-actions-AKSTerraformGitOps-main"
   audiences    = ["api://AzureADTokenExchange"]
   issuer       = "https://token.actions.githubusercontent.com"
-  subject      = "repo:${var.gh_org}/${var.gh_repo}:ref:refs/heads/${var.registry_gh_branch}"
+  subject      = "repo:${var.gh_org}/${var.gh_repo}:environment:${var.gh_registry_environment}"
 }
 
 data "azurerm_container_registry" "registry" {

@@ -61,10 +61,10 @@ variable "registry_app_name" {
   default     = "gh-actions-gbenettiregistry"
 }
 
-variable "registry_gh_branch" {
-  description = "Branch coberta pelo federated credential do app de registry"
+variable "gh_registry_environment" {
+  description = "GitHub Environment usado pelo job de build/push (build-push-app.yml)"
   type        = string
-  default     = "main"
+  default     = "build-push"
 }
 
 # -- App 2: terraform apply (setup_appRegistrationTerraform.sh) -------------
