@@ -71,3 +71,13 @@ resource "azurerm_role_assignment" "terraform_plan_blob_reader" {
   role_definition_name = "Storage Blob Data Reader"
   scope                = data.azurerm_storage_account.terraform_state[0].id
 }
+
+# terraform plan (job infra_plan, read-only) tambem precisa ler o segredo da
+# chave SSH do ArgoCD para "terraform plan" no modulo terraform/02-argocd nao
+# falhar. data source "azurerm_key_vault.vault" definida em
+# terraform_apply_app.tf, reaproveitada aqui.
+resource "azurerm_role_assignment" "terraform_plan_keyvault_secrets_reader" {
+  principal_id         = azuread_service_principal.terraform_plan.object_id
+  role_definition_name = "Key Vault Secrets User"
+  scope                = data.azurerm_key_vault.vault.id
+}

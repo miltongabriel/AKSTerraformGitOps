@@ -25,7 +25,7 @@ output "resource_group_name" {
 }
 
 output "github_secrets_setup" {
-  description = "Copie estes valores para os GitHub Environments correspondentes (Settings > Environments > <nome> > Secrets)"
+  description = "Copie estes valores para os GitHub Environments correspondentes"
   value = {
     (var.gh_environment) = {
       AZURE_CLIENT_ID       = azuread_application.terraform_apply.client_id

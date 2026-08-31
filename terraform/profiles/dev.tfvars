@@ -9,4 +9,4 @@ argocd_namespace                    = "argocd"
 argocd_project_repo_url             = "git@github.com:miltongabriel/AKSTerraformGitOps.git"
 argocd_project_path                 = "k8s"
 argocd_project_name                 = "webapp"
-argocd_project_ssh_private_key_path = "../../argocd-ssh-key"
+argocd_project_ssh_private_key_path = "../../argocd-ssh-key" # only used by bootstrap/02-keyvault

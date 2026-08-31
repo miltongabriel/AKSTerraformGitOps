@@ -10,7 +10,7 @@ resource "kubernetes_secret_v1" "project_repo_secret" {
   data = {
     type          = "git"
     url           = var.argocd_project_repo_url
-    sshPrivateKey = sensitive(file(var.argocd_project_ssh_private_key_path))
+    sshPrivateKey = sensitive(data.azurerm_key_vault_secret.argocd_ssh_private_key.value)
   }
 
   type = "Opaque"

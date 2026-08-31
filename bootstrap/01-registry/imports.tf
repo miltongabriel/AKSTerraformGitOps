@@ -1,5 +1,5 @@
-# Importa o Resource Group + ACR que ja existem no Azure (criados por
-# setup_registry.sh), para o "terraform apply" deste modulo adotar o que ja
+# Importa o Resource Group + ACR que ja existem no Azure (criados anteriormente)
+# para o "terraform apply" deste modulo adotar o que ja
 # existe em vez de tentar recriar (o que falharia por conflito de nome
 # unico/resource ja existente).
 

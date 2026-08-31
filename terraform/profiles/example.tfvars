@@ -9,4 +9,4 @@ argocd_namespace                    = "argocd"
 argocd_project_repo_url             = "git@github.com:organization/repository.git"
 argocd_project_path                 = "argocd"
 argocd_project_name                 = "webapp"
-argocd_project_ssh_private_key_path = "Wherever/you/keep/your/private/key" #This is the private key that has access to the repo. It should be in a secure location and not committed to source control.
+argocd_project_ssh_private_key_path = "Wherever/you/keep/your/private/key" #This is the private key that has access to the repo. It should be in a secure location and not committed to source control. Only used by bootstrap/02-keyvault (to seed the Key Vault secret) - terraform/02-argocd reads it back from Key Vault, not from this path.
