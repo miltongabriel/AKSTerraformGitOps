@@ -73,6 +73,7 @@ AKSTerraformGitOps/
 - [Azure CLI](https://learn.microsoft.com/cli/azure/) (`az login` configured).
 - [Terraform](https://developer.hashicorp.com/terraform) `>= 1.15.8`.
 - `kubectl` (to inspect the cluster and ArgoCD).
+- [`kubelogin`](https://azure.github.io/kubelogin/) (`az aks install-cli` installs both `kubectl` and `kubelogin`) — the AKS cluster runs with Azure AD RBAC and local accounts disabled, so both CI and a human operator authenticate to the Kubernetes API via `kubelogin`'s `azurecli` login mode, not a static kubeconfig.
 - `git` + a Bash-compatible shell to run `run.sh`/`destroy.sh` (on Windows, Git Bash).
 - A remote Git repo (e.g. GitHub) with a read-only **Deploy Key** so ArgoCD can clone this repository over SSH.
 - For Bootstrap below: an Azure AD account with rights to create App Registrations, Service Principals, and role assignments (not just subscription-level Contributor).
@@ -122,10 +123,12 @@ Then copy the `github_secrets_setup` output from `90-identities` into the corres
    ```
    (`ENVIRONMENT=dev` can also be exported as an environment variable instead of passed as the 2nd argument.)
 
-5. **Get cluster credentials** (the `Access_credentials` output of the `01-aks` step already prints the ready-to-use command):
+5. **Get cluster credentials** (the `Access_credentials` output of the `01-aks` step already prints the ready-to-use command). Local accounts are disabled on the cluster, so `az aks get-credentials` returns an Azure AD-based kubeconfig using the legacy `client-go` auth-provider plugin, which current `kubectl`/client-go no longer support directly — run `kubelogin convert-kubeconfig` once afterward to rewrite it into the modern `exec`-plugin form:
    ```bash
    az aks get-credentials --resource-group rg-aksgitops-dev-westcentralus --name aks-aksgitops-dev-westcentralus
+   kubelogin convert-kubeconfig -l azurecli
    ```
+   You'll also need `"Azure Kubernetes Service RBAC Cluster Admin"` on the cluster's resource group for your own Azure AD identity — see `operator_aad_object_ids` in [`bootstrap/90-identities`](bootstrap/90-identities).
 
 6. From here, ArgoCD takes over: it syncs the `root-app` Application → which creates the `mywebapp` and `mywebapp2` Applications → which create the `mywebapp`/`mywebapp2` namespaces and roll out the Nginx Deployments/Services automatically.
 
@@ -160,8 +163,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 - **ArgoCD's App-of-Apps pattern**: a single root `Application` manages other `Applications` via Git, fully declaratively — even the Git repository registration in ArgoCD is done through Terraform (a `kubernetes_secret_v1` holding the SSH key), with no manual `argocd repo add` step.
 - **Dedicated `AppProject`**: `root-app`, `mywebapp` and `mywebapp2` all belong to a project created by Terraform (named after `argocd_project_name`) instead of ArgoCD's built-in `default` project, scoping which repo/namespaces the apps are allowed to touch.
 - **GitOps in practice**: `syncPolicy.automated` with `selfHeal` + `prune` + `CreateNamespace=true` makes the cluster self-converge to whatever is in Git, automatically reverting manual edits made directly against the cluster.
-- **Terraform bootstrapping the Kubernetes platform it just created**: the `kubernetes`/`helm`/`kubectl` providers in the `02-argocd` step authenticate using the `data "azurerm_kubernetes_cluster"` data source from the previous step — wiring infrastructure and platform together without manually exporting a kubeconfig.
-- **Pod security best practices (and trade-offs)**: `resources.requests/limits`, `readinessProbe`/`livenessProbe`, and a `securityContext` dropping all capabilities — but the repo's commit history shows restrictions like `runAsNonRoot` and a read-only volume had to be walked back to let the stock `nginx` image `chown` its files at startup, a practical reminder that over-hardening can break container images that weren't built to run as non-root.
+- **Terraform bootstrapping the Kubernetes platform it just created**: the `kubernetes`/`helm`/`kubectl` providers in `02-argocd` get `host`/`cluster_ca_certificate` from the previous step's `data "azurerm_kubernetes_cluster"`, but authenticate via an `exec` plugin (`kubelogin get-token --login azurecli`) instead of a static client certificate — since the cluster runs Azure AD RBAC with local accounts disabled, both CI and a human operator get a real, revocable Azure AD identity on every API call, with no kubeconfig to export manually.
+- **Pod security best practices (and trade-offs)**: `resources.requests/limits`, `readinessProbe`/`livenessProbe`, and a `securityContext` dropping all capabilities — though `runAsNonRoot` and a read-only volume had to be walked back, since the stock `nginx` image needs to `chown` its files at startup, a reminder that over-hardening can break images not built to run as non-root.
 - **Per-environment profiles** (`profiles/dev.tfvars` + `dev.tfconfig`) let the same Terraform code be reused across multiple environments (dev/test/prod) just by swapping the variables file.
 - **Watch out for "almost public" secrets**: `subscription_id`/`tenant_id` aren't critical secrets on their own, but the project is a good reminder to never leave that kind of data hardcoded in tracked files.
 
@@ -174,7 +177,7 @@ Ideas to take this lab further, roughly in suggested order:
 ~~3. Proper secrets management for the ArgoCD SSH deploy key~~ — done: `bootstrap/02-keyvault` now stores it in Azure Key Vault, and `terraform/02-argocd` reads it via `data "azurerm_key_vault_secret"` instead of `file()`. `subscription_id`/`tenant_id` are still in local `tfvars`/`tfconfig` files — moving those too (or into the vault, consumed via the External Secrets Operator) is still open.
 4. **De-duplicate the app manifests** — `k8s/` and `mySecondWebApp/` are still maintained as two separate copies (kept in sync by hand; they already drifted once). Turning them into a Helm chart (per-app `values.yaml`) or a Kustomize base + overlays would remove the copy/paste and make future changes one-line.
 5. **Multi-environment promotion** — the `profiles/` pattern already supports it; add `test`/`prod` tfvars plus an ArgoCD `ApplicationSet` (or separate root apps) so a change promotes dev → test → prod through Git branches/PRs instead of one static `dev` environment.
-6. **Workload Identity / Azure AD RBAC** — replace the raw kubeconfig client-certificate auth used by the Terraform `kubernetes`/`helm` providers with AKS Azure AD integration + Workload Identity, closer to production practice.
+~~6. Workload Identity / Azure AD RBAC~~ — done: `terraform/01-aks` enables `azure_active_directory_role_based_access_control` + `local_account_disabled = true`, and the Terraform `kubernetes`/`helm`/`kubectl` providers in `02-argocd` authenticate via `exec` + `kubelogin` (`azurecli` mode) instead of a client certificate. The cluster's OIDC issuer + workload-identity webhook (`oidc_issuer_enabled`/`workload_identity_enabled`) are also on now, but nothing in-cluster consumes them yet — **pod-level Azure Workload Identity for a real workload** (e.g. migrating ArgoCD's repo-secret sourcing off the Terraform-seeded `kubernetes_secret_v1` to a live fetch via a federated identity) is the natural follow-up, deliberately left open.
 
 ---
 
@@ -235,6 +238,7 @@ AKSTerraformGitOps/
 - [Azure CLI](https://learn.microsoft.com/cli/azure/) (`az login` configurado).
 - [Terraform](https://developer.hashicorp.com/terraform) `>= 1.15.8`.
 - `kubectl` (para inspecionar o cluster e o ArgoCD).
+- [`kubelogin`](https://azure.github.io/kubelogin/) (`az aks install-cli` instala `kubectl` e `kubelogin` juntos) — o cluster AKS roda com Azure AD RBAC e contas locais desabilitadas, então tanto o CI quanto um operador humano se autenticam na API do Kubernetes via `kubelogin` no modo `azurecli`, e não mais um kubeconfig estático.
 - `git` + um shell compatível com Bash para rodar `run.sh`/`destroy.sh` (no Windows, Git Bash).
 - Um repositório Git remoto (ex. GitHub) com uma **chave de deploy (Deploy Key)** somente leitura, para o ArgoCD conseguir clonar este repositório via SSH.
 - Para o Bootstrap abaixo: uma conta Azure AD com permissão para criar App Registrations, Service Principals e role assignments (não basta Contributor no nível da subscription).
@@ -284,10 +288,12 @@ Depois copie o output `github_secrets_setup` de `90-identities` para os GitHub E
    ```
    (`ENVIRONMENT=dev` também pode ser exportado como variável de ambiente em vez de passado como 2º argumento.)
 
-5. **Obter as credenciais do cluster** (o output `Access_credentials` do step `01-aks` já traz o comando pronto):
+5. **Obter as credenciais do cluster** (o output `Access_credentials` do step `01-aks` já traz o comando pronto). Contas locais estão desabilitadas no cluster, então `az aks get-credentials` devolve um kubeconfig baseado em Azure AD usando o plugin legado `auth-provider` do `client-go`, que o `kubectl`/`client-go` atuais não suportam mais diretamente — rode `kubelogin convert-kubeconfig` uma vez depois para reescrevê-lo no formato moderno de plugin `exec`:
    ```bash
    az aks get-credentials --resource-group rg-aksgitops-dev-westcentralus --name aks-aksgitops-dev-westcentralus
+   kubelogin convert-kubeconfig -l azurecli
    ```
+   Você também vai precisar do role `"Azure Kubernetes Service RBAC Cluster Admin"` no resource group do cluster para sua própria identidade Azure AD — veja `operator_aad_object_ids` em [`bootstrap/90-identities`](bootstrap/90-identities).
 
 6. A partir daqui o ArgoCD assume: ele sincroniza a Application `root-app` → que cria as Applications `mywebapp` e `mywebapp2` → que criam os namespaces `mywebapp`/`mywebapp2` e sobem os Deployments/Services do Nginx automaticamente.
 
@@ -322,8 +328,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 - **Padrão App-of-Apps do ArgoCD**: uma única `Application` "root" gerenciando outras `Applications` via Git, tudo declarativo — inclusive o próprio cadastro do repositório Git no ArgoCD é feito via Terraform (`kubernetes_secret_v1` com a chave SSH), sem passos manuais de `argocd repo add`.
 - **`AppProject` dedicado**: `root-app`, `mywebapp` e `mywebapp2` pertencem a um projeto criado pelo Terraform (nomeado a partir de `argocd_project_name`) em vez do projeto `default` embutido do ArgoCD, restringindo repositório/namespaces que as apps podem tocar.
 - **GitOps na prática**: `syncPolicy.automated` com `selfHeal` + `prune` + `CreateNamespace=true` faz o cluster convergir sozinho para o que está no Git, e reverte automaticamente edições manuais feitas diretamente no cluster.
-- **Terraform provisionando o próprio Kubernetes**: os providers `kubernetes`/`helm`/`kubectl` do step `02-argocd` se autenticam usando o `data "azurerm_kubernetes_cluster"` do step anterior — ou seja, infraestrutura e plataforma são conectadas sem exportar kubeconfig manualmente.
-- **Boas práticas (e trade-offs) de segurança em Pods**: `resources.requests/limits`, `readinessProbe`/`livenessProbe`, e `securityContext` com `drop: [ALL]` — mas o histórico do repo mostra que restrições como `runAsNonRoot` e volume `readOnly` tiveram que ser recuadas para permitir que a imagem `nginx` fizesse `chown` na inicialização, um lembrete prático de como *hardening* excessivo pode quebrar imagens de container não preparadas para rodar como não-root.
+- **Terraform provisionando o próprio Kubernetes**: os providers `kubernetes`/`helm`/`kubectl` do step `02-argocd` pegam `host`/`cluster_ca_certificate` do `data "azurerm_kubernetes_cluster"` do step anterior, mas se autenticam via um plugin `exec` (`kubelogin get-token --login azurecli`) em vez de um certificado estático — como o cluster roda Azure RBAC do Azure AD com contas locais desabilitadas, tanto o CI quanto um operador humano usam uma identidade Azure AD de verdade, revogável, em cada chamada à API, sem precisar exportar kubeconfig manualmente.
+- **Boas práticas (e trade-offs) de segurança em Pods**: `resources.requests/limits`, `readinessProbe`/`livenessProbe`, e `securityContext` com `drop: [ALL]` — embora `runAsNonRoot` e volume `readOnly` tenham sido recuados, já que a imagem `nginx` precisa fazer `chown` na inicialização, um lembrete de que *hardening* excessivo pode quebrar imagens não preparadas para rodar como não-root.
 - **Perfis por ambiente** (`profiles/dev.tfvars` + `dev.tfconfig`) permitem reaproveitar o mesmo código Terraform para múltiplos ambientes (dev/test/prod) só trocando o arquivo de variáveis.
 - **Cuidado com segredos "quase públicos"**: `subscription_id`/`tenant_id` não são segredos críticos por si só, mas o projeto reforça o hábito de nunca deixar esse tipo de dado hardcoded em arquivos versionados.
 
@@ -336,4 +342,4 @@ Ideias para evoluir esse laboratório, em ordem sugerida:
 ~~3. Gestão de segredos de verdade para a chave SSH do ArgoCD~~ — feito: `bootstrap/02-keyvault` agora guarda a chave no Azure Key Vault, e `terraform/02-argocd` lê o valor via `data "azurerm_key_vault_secret"` em vez de `file()`. `subscription_id`/`tenant_id` ainda estão em arquivos locais (`tfvars`/`tfconfig`) — mover esses também (ou para o vault, consumidos via External Secrets Operator) segue em aberto.
 4. **Eliminar duplicação dos manifests** — `k8s/` e `mySecondWebApp/` ainda são mantidas como duas cópias separadas (sincronizadas manualmente; já divergiram uma vez). Transformá-las em um Helm chart (com `values.yaml` por app) ou em uma base + overlays do Kustomize eliminaria o copy/paste e tornaria mudanças futuras questão de uma linha.
 5. **Promoção multi-ambiente** — o padrão `profiles/` já suporta isso; adicionar tfvars de `test`/`prod` e um `ApplicationSet` do ArgoCD (ou root apps separadas) para que uma mudança seja promovida dev → test → prod via branches/PRs no Git, em vez de um único ambiente `dev` estático.
-6. **Workload Identity / Azure AD RBAC** — trocar a autenticação por certificado de cliente via kubeconfig usada pelos providers `kubernetes`/`helm` do Terraform pela integração Azure AD do AKS + Workload Identity, mais próximo de uma prática de produção.
+~~6. Workload Identity / Azure AD RBAC~~ — feito: `terraform/01-aks` habilita `azure_active_directory_role_based_access_control` + `local_account_disabled = true`, e os providers `kubernetes`/`helm`/`kubectl` do Terraform em `02-argocd` se autenticam via `exec` + `kubelogin` (modo `azurecli`) em vez de certificado de cliente. O OIDC issuer + o webhook de workload identity do cluster (`oidc_issuer_enabled`/`workload_identity_enabled`) também já estão ligados, mas nada dentro do cluster os usa ainda — **Workload Identity no nível de pod para uma carga de trabalho real** (ex.: migrar a origem do secret do repositório do ArgoCD, hoje seedado pelo Terraform via `kubernetes_secret_v1`, para uma busca ao vivo via identidade federada) é o próximo passo natural, deixado em aberto de propósito.
