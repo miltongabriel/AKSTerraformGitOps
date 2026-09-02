@@ -1,35 +1,32 @@
 variable "subscription_id" {
-  description = "Azure subscription ID"
+  description = "Azure subscription ID."
   type        = string
   sensitive   = true
 }
 
 variable "tenant_id" {
-  description = "Azure AD tenant ID"
+  description = "Azure AD tenant ID."
   type        = string
   sensitive   = true
 }
 
 variable "project_name" {
-  description = "Prefixo usado nos recursos de bootstrap/00-backend e terraform/ (01-aks/02-argocd)"
+  description = "Name prefix applied to resource names - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
-  default     = "aksgitops"
 }
 
 variable "environment" {
-  description = "Ambiente gerenciado por bootstrap/00-backend e terraform/ (01-aks/02-argocd)"
+  description = "Environment name (e.g. \"dev\") - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
-  default     = "dev"
 }
 
 variable "location" {
-  description = "Regiao dos recursos gerenciados pelo terraform/"
+  description = "Azure region for the resources - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
-  default     = "westcentralus"
 }
 
 variable "argocd_project_ssh_private_key_path" {
-  description = "Caminho local para a chave privada SSH do ArgoCD (mesma chave gerada com ssh-keygen no README). Lida uma unica vez aqui, via file(), para seedar o segredo no Key Vault - terraform/02-argocd nunca mais toca no arquivo local, so le o Key Vault."
+  description = "Local path to the ArgoCD SSH private key (the same key generated with ssh-keygen in the README). Read once here, via file(), to seed the Key Vault secret - terraform/02-argocd never touches the local file again, it only reads Key Vault."
   type        = string
   sensitive   = true
 }

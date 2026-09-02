@@ -58,10 +58,9 @@ resource "azurerm_role_assignment" "terraform_apply_rbac_admin_acr" {
 }
 
 resource "azurerm_role_assignment" "terraform_apply_storage_blob_contributor" {
-  count                = var.terraform_state_storage_account_exists ? 1 : 0
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Storage Blob Data Contributor"
-  scope                = data.azurerm_storage_account.terraform_state[0].id
+  scope                = data.azurerm_storage_account.terraform_state.id
 }
 
 resource "azurerm_role_assignment" "terraform_apply_keyvault_secrets_reader" {
