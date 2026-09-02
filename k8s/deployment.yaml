@@ -17,9 +17,11 @@ spec:
         app: study-api
     spec:
       terminationGracePeriodSeconds: 30
+      # Deliberate hardening: nothing in this pod calls the Kubernetes API.
       automountServiceAccountToken: false
       containers:
         - name: study-api
+          # Tag is the commit SHA, updated automatically by .github/workflows/build-push-app.yml on every push to app/.
           image: gbenettiregistry.azurecr.io/study-api:7cfa0d78443b60d8e2010fed77278df2000479f8
           ports:
             - name: http
@@ -28,6 +30,7 @@ spec:
           env:
             - name: PORT
               value: "3000"
+          # Sized to fit the free-tier Standard_B2pls_v2 node (terraform/profiles/dev.tfvars).
           resources:
             requests:
               cpu: 10m

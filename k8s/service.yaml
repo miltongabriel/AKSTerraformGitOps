@@ -5,6 +5,7 @@ metadata:
   labels:
     tier: backend
 spec:
+  # Deliberate: provisions a real Azure Load Balancer + public IP (ongoing cost), not ClusterIP/Ingress.
   type: LoadBalancer
   ports:
   - name: http

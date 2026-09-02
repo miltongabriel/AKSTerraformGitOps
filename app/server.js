@@ -8,14 +8,14 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Estado em memória — sem banco de dados, só para fins didáticos.
+// In-memory state — no database, for learning purposes only.
 let tasks = [
   { id: 1, title: 'Aprender Docker', done: false },
   { id: 2, title: 'Aprender CI/CD', done: false },
 ];
 let nextId = 3;
 
-// Usado por probes de liveness/readiness no Kubernetes.
+// Used by Kubernetes liveness/readiness probes.
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -52,7 +52,7 @@ app.delete('/api/tasks/:id', (req, res) => {
   res.status(204).send();
 });
 
-// Só inicia o servidor se o arquivo for executado diretamente (facilita testes).
+// Only start the server when this file is run directly (makes testing easier).
 if (require.main === module) {
   app.listen(port, () => {
     console.log(`study-api ouvindo na porta ${port}`);
