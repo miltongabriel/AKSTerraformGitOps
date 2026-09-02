@@ -19,8 +19,9 @@ resource "azurerm_key_vault" "vault" {
 
   rbac_authorization_enabled = true
 
-  # Deliberately off: this is a destroyable dev/learning vault, not production - with it on, deleted secrets/the vault itself would be unrecoverable-but-undeletable for 90 days.
-  purge_protection_enabled = false
+  # Deliberately off: this is a destroyable learning vault, not production.
+  purge_protection_enabled   = false
+  soft_delete_retention_days = 7
 }
 
 resource "azurerm_role_assignment" "operator_secrets_officer" {

@@ -1,26 +1,25 @@
 variable "environment" {
-  description = "Environment name (Dev, Test, Prod)"
+  description = "Environment name (e.g. \"dev\") - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
 }
 
 variable "project_name" {
-  description = "Name prefix applied to all resources and tags"
+  description = "Name prefix applied to resource names - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
-  default     = "aksgitops"
 }
 
 variable "location" {
-  description = "Location of the resources"
+  description = "Azure region for the resources - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
 }
 
 variable "subscription_id" {
-  description = "Azure subscription ID"
+  description = "Azure subscription ID."
   type        = string
   sensitive   = true
 }
 variable "tenant_id" {
-  description = "Azure tenant ID"
+  description = "Azure AD tenant ID."
   type        = string
   sensitive   = true
 }
@@ -28,6 +27,7 @@ variable "tenant_id" {
 variable "aks_k8s_version" {
   description = "Kubernetes version for the AKS cluster"
   type        = string
+  default     = "1.35.7"
 }
 
 variable "aks_default_node_pool_vm_size" {

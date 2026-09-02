@@ -57,16 +57,14 @@ resource "azurerm_role_assignment" "terraform_plan_aks_reader" {
 }
 
 data "azurerm_storage_account" "terraform_state" {
-  count               = var.terraform_state_storage_account_exists ? 1 : 0
   name                = local.terraform_state_storage_account_name
   resource_group_name = data.azurerm_resource_group.terraform_managed.name
 }
 
 resource "azurerm_role_assignment" "terraform_plan_blob_reader" {
-  count                = var.terraform_state_storage_account_exists ? 1 : 0
   principal_id         = azuread_service_principal.terraform_plan.object_id
   role_definition_name = "Storage Blob Data Reader"
-  scope                = data.azurerm_storage_account.terraform_state[0].id
+  scope                = data.azurerm_storage_account.terraform_state.id
 }
 
 resource "azurerm_role_assignment" "terraform_plan_keyvault_secrets_reader" {

@@ -1,37 +1,36 @@
 variable "environment" {
-  description = "Environment name (Dev, Test, Prod)"
+  description = "Environment name (e.g. \"dev\") - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
 }
 
 variable "project_name" {
-  description = "Name prefix applied to all resources and tags"
+  description = "Name prefix applied to resource names - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
-  default     = "aksgitops"
 }
 
 variable "location" {
-  description = "Location of the resources"
+  description = "Azure region for the resources - shared across every bootstrap/terraform step; must match terraform/profiles/dev.tfvars."
   type        = string
 }
 
 variable "subscription_id" {
-  description = "Azure subscription ID"
+  description = "Azure subscription ID."
   type        = string
   sensitive   = true
 }
 variable "tenant_id" {
-  description = "Azure tenant ID"
+  description = "Azure AD tenant ID."
   type        = string
   sensitive   = true
 }
 
 variable "argocd_namespace" {
-  description = "Namespace for ArgoCD installation"
+  description = "Namespace for ArgoCD installation."
   type        = string
 }
 
 variable "argocd_project_repo_url" {
-  description = "URL of the project repository"
+  description = "Git clone URL (SSH) of the repository ArgoCD watches - used for the repo secret, the AppProject's sourceRepos, and the root Application's source."
   type        = string
 }
 
@@ -47,6 +46,6 @@ variable "argocd_chart_version" {
 }
 
 variable "argocd_project_name" {
-  description = "Name for the project in Kubernetes"
+  description = "Name of the ArgoCD AppProject the root Application belongs to (also used as the Git repo secret's name prefix)."
   type        = string
 }
