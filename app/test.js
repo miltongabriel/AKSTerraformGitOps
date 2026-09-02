@@ -1,6 +1,6 @@
 'use strict';
 
-// Testes simples usando apenas node:test + fetch nativo (sem dependências extras).
+// Simple tests using only node:test + native fetch (no extra dependencies).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const app = require('./server');
