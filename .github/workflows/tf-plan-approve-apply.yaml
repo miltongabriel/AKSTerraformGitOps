@@ -77,8 +77,10 @@ jobs:
 
   infra_plan:
     name: 'Terraform Plan'
+    # Not an approval gate (unlike dev-apply below) - exists only to scope the OIDC federated credential's subject claim to this job.
     environment: 'dev-plan'
     needs: detect-changes
+    # Required: a GitHub Actions matrix errors out entirely (not just skips) if given an empty array.
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
     permissions:
@@ -110,6 +112,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          # Glob hashes every module's lock file, not just this matrix entry's - cache key/invalidation is shared across the whole matrix.
           key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: |
             ${{ runner.os }}-terraform-
@@ -123,9 +126,15 @@ jobs:
         id: fmt
         run: terraform fmt -recursive -check
 
+      - name: Install kubelogin
+        uses: azure/use-kubelogin@76597ae0fcbaace21b05e13a2cbf8daee2c6e820 # v1.2
+        with:
+          kubelogin-version: 'v0.2.19'
+
       - name: Terraform Init
         id: init
         run: |
+          # Same naming convention as terraform/profiles/*.tfconfig, hardcoded here because this workflow doesn't read that file.
           terraform init \
           -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
           -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
@@ -165,6 +174,7 @@ jobs:
     # `dev` above, so the unattended plan job is never gated.
     environment: 'dev-apply'
     needs: [detect-changes, infra_plan]
+    # Same empty-matrix guard as infra_plan above.
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
     permissions:
@@ -196,6 +206,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          # Glob hashes every module's lock file, not just this matrix entry's - cache key/invalidation is shared across the whole matrix.
           key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: |
             ${{ runner.os }}-terraform-
@@ -205,9 +216,15 @@ jobs:
         with:
           terraform_version: "1.15.8"
 
+      - name: Install kubelogin
+        uses: azure/use-kubelogin@76597ae0fcbaace21b05e13a2cbf8daee2c6e820 # v1.2
+        with:
+          kubelogin-version: 'v0.2.19'
+
       - name: Terraform Init
         id: init
         run: |
+          # Same naming convention as terraform/profiles/*.tfconfig, hardcoded here because this workflow doesn't read that file.
           terraform init \
           -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
           -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
