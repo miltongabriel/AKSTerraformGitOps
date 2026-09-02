@@ -168,10 +168,9 @@ jobs:
 
   infra_apply:
     name: 'Terraform Apply'
-    # This environment must have "Required reviewers" configured
-    # (Settings -> Environments -> dev-apply) so this job pauses for
-    # manual approval. It is deliberately a different environment than
-    # `dev` above, so the unattended plan job is never gated.
+    # This environment must have "Required reviewers" configured so this job pauses 
+    # for manual approval. It is deliberately a different environment than
+    # `dev-plan` above, so the unattended plan job is never gated.
     environment: 'dev-apply'
     needs: [detect-changes, infra_plan]
     # Same empty-matrix guard as infra_plan above.
@@ -229,6 +228,7 @@ jobs:
           -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
           -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
+          -backend-config="use_azuread_auth=true" \
           -input=false
 
       - name: Download Plan Artifact

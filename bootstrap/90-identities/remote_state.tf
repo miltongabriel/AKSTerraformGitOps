@@ -6,6 +6,7 @@ data "terraform_remote_state" "registry" {
     container_name       = local.terraform_state_container_name
     key                  = "bootstrap/registry.tfstate"
     subscription_id      = var.subscription_id
+    use_azuread_auth     = true
   }
 }
 
@@ -17,5 +18,6 @@ data "terraform_remote_state" "keyvault" {
     container_name       = local.terraform_state_container_name
     key                  = "bootstrap/keyvault.tfstate"
     subscription_id      = var.subscription_id
+    use_azuread_auth     = true
   }
 }
