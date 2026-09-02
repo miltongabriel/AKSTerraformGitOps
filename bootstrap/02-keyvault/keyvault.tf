@@ -1,8 +1,8 @@
-# Key Vault + segredo da chave privada SSH do ArgoCD.
+# Key Vault + the ArgoCD SSH private key secret.
 #
-# O resource group ja existe de verdade (criado e gerenciado pelo state de
-# bootstrap/00-backend), entao aqui so LEMOS ele via data source para pegar
-# o ID/location — nao o recriamos/possuimos neste modulo.
+# The resource group already exists for real (created and managed by
+# bootstrap/00-backend's state), so here we only READ it via a data source
+# to get the ID/location — we don't recreate/own it in this module.
 
 data "azurerm_resource_group" "terraform_managed" {
   name = "rg-${var.project_name}-${var.environment}-${var.location}"
@@ -19,6 +19,7 @@ resource "azurerm_key_vault" "vault" {
 
   rbac_authorization_enabled = true
 
+  # Deliberately off: this is a destroyable dev/learning vault, not production - with it on, deleted secrets/the vault itself would be unrecoverable-but-undeletable for 90 days.
   purge_protection_enabled = false
 }
 

@@ -34,3 +34,9 @@ variable "aks_default_node_pool_vm_size" {
   description = "VM size for the default node pool in the AKS cluster"
   type        = string
 }
+
+variable "aks_admin_group_object_ids" {
+  description = "Optional Azure AD group object IDs granted AKS-managed break-glass admin access (bypasses Azure RBAC checks entirely). Leave empty and use the per-identity role assignments in bootstrap/90-identities (terraform_apply/terraform_plan/operator_access.tf) instead, unless a break-glass mechanism is specifically wanted."
+  type        = list(string)
+  default     = []
+}
