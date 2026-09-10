@@ -56,6 +56,15 @@ resource "azurerm_role_assignment" "terraform_plan_aks_reader" {
   scope              = data.azurerm_resource_group.terraform_managed.id
 }
 
+# ARM-level (not Kubernetes-RBAC) role: without it, listClusterUserCredential
+# is denied and `terraform plan` against 02-argocd can't even fetch a
+# kubeconfig to authenticate with - see the comment in operator_access.tf.
+resource "azurerm_role_assignment" "terraform_plan_aks_cluster_user" {
+  principal_id         = azuread_service_principal.terraform_plan.object_id
+  role_definition_name = "Azure Kubernetes Service Cluster User Role"
+  scope                = data.azurerm_resource_group.terraform_managed.id
+}
+
 data "azurerm_storage_account" "terraform_state" {
   name                = local.terraform_state_storage_account_name
   resource_group_name = data.azurerm_resource_group.terraform_managed.name

@@ -37,6 +37,15 @@ resource "azurerm_role_assignment" "terraform_apply_aks_admin" {
   scope                = data.azurerm_resource_group.terraform_managed.id
 }
 
+# ARM-level (not Kubernetes-RBAC) role: without it, listClusterUserCredential
+# is denied and terraform can't even fetch a kubeconfig to authenticate with
+# - see the comment in operator_access.tf.
+resource "azurerm_role_assignment" "terraform_apply_aks_cluster_user" {
+  principal_id         = azuread_service_principal.terraform_apply.object_id
+  role_definition_name = "Azure Kubernetes Service Cluster User Role"
+  scope                = data.azurerm_resource_group.terraform_managed.id
+}
+
 data "azurerm_role_definition" "acr_pull" {
   name = "AcrPull"
 }

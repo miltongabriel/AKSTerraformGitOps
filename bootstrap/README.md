@@ -14,7 +14,7 @@ This folder provisions the things the CI/CD pipeline (`.github/workflows/tf-plan
 | `00-backend` | Resource Group + Storage Account + Container for the `terraform/` remote tfstate | **Local** (unavoidable — it creates the backend everything else, including the other steps here, then points at) |
 | `01-registry` | Resource Group + Container Registry (ACR) | Remote (same backend `00-backend` just created) |
 | `02-keyvault` | Key Vault + the ArgoCD SSH deploy key, seeded from a local file | Remote (same backend) |
-| `90-identities` | 3 GitHub Actions OIDC App Registrations: registry-push, terraform-apply, terraform-plan — including read access (`Key Vault Secrets User`) to the `02-keyvault` vault, and `"Azure Kubernetes Service RBAC Cluster Admin"` on the AKS cluster's resource group for terraform-apply/terraform-plan | Remote (same backend) |
+| `90-identities` | 3 GitHub Actions OIDC App Registrations: registry-push, terraform-apply, terraform-plan — including read access (`Key Vault Secrets User`) to the `02-keyvault` vault, and both `"Azure Kubernetes Service RBAC Cluster Admin"` (Kubernetes RBAC) and `"Azure Kubernetes Service Cluster User Role"` (ARM, needed to fetch a kubeconfig at all) on the AKS cluster's resource group for terraform-apply/terraform-plan | Remote (same backend) |
 
 `90-identities` is deliberately **last**: it grants roles onto resources created by every earlier step (the RG, the ACR, the tfstate storage account, and now the Key Vault), so those resources need to exist before it runs.
 
