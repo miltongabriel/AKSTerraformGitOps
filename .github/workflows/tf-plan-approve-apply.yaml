@@ -87,6 +87,8 @@ jobs:
       contents: read
       id-token: write
     strategy:
+        max-parallel: 1 # Forces jobs to run one at a time
+        fail-fast: false # Prevents remaining jobs from canceling if one fails
         matrix:
             step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
     defaults:
