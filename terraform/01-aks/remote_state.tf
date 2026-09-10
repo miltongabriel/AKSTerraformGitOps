@@ -6,5 +6,6 @@ data "terraform_remote_state" "registry" {
     container_name       = local.tfstate_container_name
     key                  = "bootstrap/registry.tfstate"
     subscription_id      = var.subscription_id
+    use_azuread_auth     = true
   }
 }
