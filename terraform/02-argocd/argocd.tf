@@ -24,6 +24,7 @@ resource "helm_release" "argocd" {
     #     name  = "server.service.loadBalancerSourceRanges"
     #     value = "{0.0.0.0/0}"
     # },
+    # TLS deliberately off: access is only ever via `kubectl port-forward`, never exposed publicly (see the commented-out LoadBalancer option above).
     {
       name  = "configs.params.server.insecure"
       value = "true"

@@ -29,6 +29,7 @@ resource "kubectl_manifest" "argocd_project" {
       description: 'Applications for the ${var.argocd_project_name} GitOps project'
       sourceRepos:
         - '${var.argocd_project_repo_url}'
+      # Wildcard destinations/kinds are deliberate for this single-tenant learning cluster, not an oversight.
       destinations:
         - server: 'https://kubernetes.default.svc'
           namespace: '*'
@@ -56,6 +57,7 @@ resource "kubectl_manifest" "argocd_root_app" {
       destination:
         server: 'https://kubernetes.default.svc'
         namespace: argocd
+      # prune deletes any cluster resource removed from Git; selfHeal reverts manual in-cluster edits back to what's in Git - both automatic.
       syncPolicy:
         automated:
           prune: true
