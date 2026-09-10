@@ -22,7 +22,7 @@ variable "gh_repo" {
   default     = "AKSTerraformGitOps@1335275844"
 }
 
-# Precisam bater com terraform/profiles/dev.tfvars
+# Must match terraform/profiles/dev.tfvars
 variable "project_name" {
   description = "Prefixo usado nos recursos de bootstrap/00-backend e terraform/ (01-aks/02-argocd)"
   type        = string
@@ -41,19 +41,7 @@ variable "location" {
   default     = "westcentralus"
 }
 
-variable "acr_name" {
-  description = "Nome do ACR existente (criado por bootstrap/01-registry)"
-  type        = string
-  default     = "gbenettiregistry"
-}
-
-variable "acr_resource_group_name" {
-  description = "Resource group do ACR existente (criado por bootstrap/01-registry)"
-  type        = string
-  default     = "aksterraformgitops"
-}
-
-# -- App 1: registry (setup_appRegistration.sh) -----------------------------
+# -- App 1: registry ---------------------------------------------------------
 
 variable "registry_app_name" {
   description = "Nome do App Registration usado pelo workflow build-push-app.yml"
@@ -67,7 +55,7 @@ variable "gh_registry_environment" {
   default     = "build-push"
 }
 
-# -- App 2: terraform apply (setup_appRegistrationTerraform.sh) -------------
+# -- App 2: terraform apply --------------------------------------------------
 
 variable "terraform_apply_app_name" {
   description = "Nome do App Registration com permissao de escrita (job apply-on-approval)"
@@ -81,7 +69,7 @@ variable "gh_environment" {
   default     = "dev-apply"
 }
 
-# -- App 3: terraform plan / read-only (setup_appRegistrationTerraformPlan.sh)
+# -- App 3: terraform plan / read-only ---------------------------------------
 
 variable "terraform_plan_app_name" {
   description = "Nome do App Registration read-only (job infra_plan)"
@@ -99,4 +87,12 @@ variable "terraform_state_storage_account_exists" {
   description = "Defina como true somente depois que bootstrap/00-backend ja tiver sido aplicado (a storage account do tfstate ja existe). Controla a criacao da role assignment 'Storage Blob Data Reader' do app de plan — ver comentario em terraform_plan_app.tf."
   type        = bool
   default     = true
+}
+
+# -- Human/operator access to AKS via Azure RBAC (see operator_access.tf) ---
+
+variable "operator_aad_object_ids" {
+  description = "Object IDs do Azure AD (usuarios ou grupos) que recebem 'Azure Kubernetes Service RBAC Cluster Admin' no cluster - necessario porque terraform/01-aks roda com local_account_disabled = true. Ver operator_access.tf."
+  type        = list(string)
+  default     = []
 }

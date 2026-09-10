@@ -1,8 +1,6 @@
-# Traduzido de setup_appRegistration.sh
-#
-# App Registration + federated credential (OIDC) usado pelo workflow
-# build-push-app.yml para dar push da imagem no ACR. Unica permissao: AcrPush,
-# escopada ao proprio ACR.
+# App Registration + federated credential (OIDC) used by the
+# build-push-app.yml workflow to push the image to ACR. Single permission:
+# AcrPush, scoped to the ACR itself.
 
 resource "azuread_application" "registry" {
   display_name = var.registry_app_name
@@ -14,19 +12,14 @@ resource "azuread_service_principal" "registry" {
 
 resource "azuread_application_federated_identity_credential" "registry_branch" {
   application_id = azuread_application.registry.id
-  display_name = "gh-actions-AKSTerraformGitOps-main"
-  audiences    = ["api://AzureADTokenExchange"]
-  issuer       = "https://token.actions.githubusercontent.com"
-  subject      = "repo:${var.gh_org}/${var.gh_repo}:environment:${var.gh_registry_environment}"
-}
-
-data "azurerm_container_registry" "registry" {
-  name                = var.acr_name
-  resource_group_name = var.acr_resource_group_name
+  display_name   = "gh-actions-AKSTerraformGitOps-main"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:${var.gh_org}/${var.gh_repo}:environment:${var.gh_registry_environment}"
 }
 
 resource "azurerm_role_assignment" "registry_acr_push" {
   principal_id         = azuread_service_principal.registry.object_id
   role_definition_name = "AcrPush"
-  scope                = data.azurerm_container_registry.registry.id
+  scope                = data.terraform_remote_state.registry.outputs.acr_id
 }

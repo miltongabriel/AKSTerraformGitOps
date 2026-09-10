@@ -1,16 +1,8 @@
-# Traduzido de setup_appRegistrationTerraform.sh
-#
-# App Registration + federated credential (OIDC) usado pelo job
-# "apply-on-approval" (GitHub Environment var.gh_environment) do workflow
-# tf-plan-approve-apply.yaml. Least privilege: nenhuma role na subscription —
-# todo o acesso do app fica escopado ao resource group do terraform/ + ao ACR.
-#
-# O resource group ja existe de verdade (criado e gerenciado pelo state de
-# bootstrap/00-backend — terraform/01-aks so referencia o nome, nao o
-# possui), entao aqui so LEMOS ele via data source para pegar o ID — nao o
-# recriamos/possuimos neste modulo. Se algum dia voce partir de um ambiente
-# novo do zero, o bootstrap/00-backend precisa rodar antes deste modulo, ja
-# que a data source abaixo falha se o RG nao existir ainda.
+# App Registration + federated credential (OIDC) used by the
+# "apply-on-approval" job (GitHub Environment var.gh_environment) of the
+# tf-plan-approve-apply.yaml workflow. Least privilege: no subscription-level
+# role — all of the app's access is scoped to the terraform/ resource group
+# + the ACR.
 
 resource "azuread_application" "terraform_apply" {
   display_name = var.terraform_apply_app_name
@@ -33,16 +25,6 @@ data "azurerm_resource_group" "terraform_managed" {
   name = local.resource_group_name
 }
 
-data "azurerm_container_registry" "acr" {
-  name                = var.acr_name
-  resource_group_name = var.acr_resource_group_name
-}
-
-data "azurerm_key_vault" "vault" {
-  name                = "kv-${var.project_name}-${var.environment}"
-  resource_group_name = local.resource_group_name
-}
-
 resource "azurerm_role_assignment" "terraform_apply_contributor" {
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Contributor"
@@ -51,7 +33,7 @@ resource "azurerm_role_assignment" "terraform_apply_contributor" {
 
 resource "azurerm_role_assignment" "terraform_apply_aks_admin" {
   principal_id         = azuread_service_principal.terraform_apply.object_id
-  role_definition_name = "Azure Kubernetes Service Cluster Admin Role"
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
   scope                = data.azurerm_resource_group.terraform_managed.id
 }
 
@@ -62,11 +44,11 @@ data "azurerm_role_definition" "acr_pull" {
 resource "azurerm_role_assignment" "terraform_apply_rbac_admin_acr" {
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Role Based Access Control Administrator"
-  scope                = data.azurerm_container_registry.acr.id
+  scope                = data.terraform_remote_state.registry.outputs.acr_id
 
-  # So permite criar/remover atribuicoes do role AcrPull nesse ACR (evita que
-  # esta permissao de "gerenciar RBAC" sirva para o app se auto-elevar a outro
-  # role).
+  # Only allows creating/removing AcrPull role assignments on this ACR
+  # (prevents this "manage RBAC" permission from letting the app
+  # self-elevate to another role).
   condition_version = "2.0"
   condition         = <<-EOT
     ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${data.azurerm_role_definition.acr_pull.role_definition_id}}))
@@ -85,5 +67,5 @@ resource "azurerm_role_assignment" "terraform_apply_storage_blob_contributor" {
 resource "azurerm_role_assignment" "terraform_apply_keyvault_secrets_reader" {
   principal_id         = azuread_service_principal.terraform_apply.object_id
   role_definition_name = "Key Vault Secrets User"
-  scope                = data.azurerm_key_vault.vault.id
+  scope                = data.terraform_remote_state.keyvault.outputs.key_vault_id
 }

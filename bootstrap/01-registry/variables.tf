@@ -11,7 +11,7 @@ variable "tenant_id" {
 }
 
 variable "resource_group_name" {
-  description = "Resource group do ACR (criado originalmente por setup_registry.sh)"
+  description = "Resource group do ACR gerenciado por este modulo"
   type        = string
   default     = "aksterraformgitops"
 }
@@ -23,7 +23,7 @@ variable "location" {
 }
 
 variable "acr_name" {
-  description = "Nome do ACR (criado originalmente por setup_registry.sh)"
+  description = "Nome do ACR gerenciado por este modulo"
   type        = string
   default     = "gbenettiregistry"
 }
