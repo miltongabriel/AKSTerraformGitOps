@@ -22,7 +22,7 @@ spec:
       containers:
         - name: study-api
           # Tag is the commit SHA, updated automatically by .github/workflows/build-push-app.yml on every push to app/.
-          image: gbenettiregistry.azurecr.io/study-api:7cfa0d78443b60d8e2010fed77278df2000479f8
+          image: gbenettiregistry.azurecr.io/study-api:cf07f3f1c9ac5f1eda5c51253bbc8ac44bd6035b
           ports:
             - name: http
               containerPort: 3000
