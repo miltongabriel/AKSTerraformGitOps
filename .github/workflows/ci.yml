@@ -1,13 +1,22 @@
 name: CI
 
-# Validates the repo on every PR. Terraform fmt/validate/plan still lives in
-# tf-plan-approve-apply.yaml, since that needs live Azure auth - but static
+# Validates the repo on every PR and on every push to main. Terraform
+# fmt/validate/plan still lives in tf-plan-approve-apply.yaml, since that
+# needs live Azure auth - but static
 # analysis (Checkov) doesn't, so it runs here for PR-time feedback across
 # both Terraform trees (terraform/ and bootstrap/), instead of only showing up
 # after merge in that pipeline's plan step.
 
 on:
   pull_request:
+    paths:
+      - "app/**"
+      - "k8s/**"
+      - "terraform/**/*.tf"
+      - "bootstrap/**/*.tf"
+      - ".github/workflows/ci.yml"
+  push:
+    branches: ["main"]
     paths:
       - "app/**"
       - "k8s/**"
