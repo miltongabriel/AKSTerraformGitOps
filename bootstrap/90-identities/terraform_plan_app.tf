@@ -1,25 +1,25 @@
-# App Registration + federated credential (OIDC), READ-ONLY, used by the
-# "infra_plan" job (GitHub Environment var.gh_plan_environment) of the
-# tf-plan-approve-apply.yaml workflow. Read-only permissions on Azure
-# Resource Manager only — no Contributor/RBAC Admin.
-
-resource "azurerm_role_definition" "terraform_plan_aks_reader" {
-  name        = "AKS RBAC Terraform Plan Reader - ${var.project_name}-${var.environment}"
-  scope       = data.azurerm_resource_group.terraform_managed.id
-  description = "Read-only AKS RBAC access (Namespace, Secrets, custom resources) scoped to exactly what 'terraform plan' needs against terraform/02-argocd. No write/delete dataActions."
-
-  permissions {
-    data_actions = [
-      "Microsoft.ContainerService/managedClusters/namespaces/read",
-      "Microsoft.ContainerService/managedClusters/secrets/read",
-      "Microsoft.ContainerService/managedClusters/customresources/read",
-    ]
-  }
-
-  assignable_scopes = [
-    data.azurerm_resource_group.terraform_managed.id,
-  ]
-}
+# App Registration + federated credential (OIDC), used by the "infra_plan"
+# job (GitHub Environment var.gh_plan_environment) of the
+# tf-plan-approve-apply.yaml workflow. No Contributor/subscription-level
+# role - all access is scoped to the terraform/ resource group + the ACR.
+#
+# Kubernetes-RBAC access against the AKS cluster is "Azure Kubernetes
+# Service RBAC Admin", not a narrower custom role: a hand-picked
+# data_actions list (namespaces/read, secrets/read,
+# "customresources/read") looked read-only and sufficient on paper, but
+# "customresources/read" turned out not to actually authorize reads of
+# third-party CRD instances (e.g. ArgoCD's AppProject/Application) in
+# practice - Azure's AKS-RBAC data actions are a fixed, pre-registered
+# list per API group/resource, with no way to reference an arbitrary
+# 3rd-party group like argoproj.io, and no working generic fallback
+# short of a full dataActions wildcard. "RBAC Admin" has that wildcard
+# (dataActions: ["Microsoft.ContainerService/managedClusters/*"]) with
+# only namespaces/resourcequotas write+delete excluded - not the
+# read-only role this was originally designed to be, but `terraform
+# plan` never issues writes regardless of what the identity is allowed
+# to do, and Admin is still meaningfully narrower than the "RBAC Cluster
+# Admin" tier terraform_apply needs (no namespace/quota admin capability
+# at all).
 
 resource "azuread_application" "terraform_plan" {
   display_name = var.terraform_plan_app_name
@@ -50,10 +50,10 @@ resource "azurerm_role_assignment" "terraform_plan_reader_acr" {
   scope                = data.terraform_remote_state.registry.outputs.acr_id
 }
 
-resource "azurerm_role_assignment" "terraform_plan_aks_reader" {
-  principal_id       = azuread_service_principal.terraform_plan.object_id
-  role_definition_id = azurerm_role_definition.terraform_plan_aks_reader.role_definition_resource_id
-  scope              = data.azurerm_resource_group.terraform_managed.id
+resource "azurerm_role_assignment" "terraform_plan_aks_admin" {
+  principal_id         = azuread_service_principal.terraform_plan.object_id
+  role_definition_name = "Azure Kubernetes Service RBAC Admin"
+  scope                = data.azurerm_resource_group.terraform_managed.id
 }
 
 # ARM-level (not Kubernetes-RBAC) role: without it, listClusterUserCredential
