@@ -10,6 +10,16 @@ on:
 permissions:
   contents: read
 
+# One run at a time: without this, a second push can start its own
+# infra_plan/infra_apply run while an earlier one is still mid-flight
+# (waiting on dev-apply approval, or applying), so it would plan against
+# state from before the earlier run's apply. cancel-in-progress stays
+# false deliberately - cancelling a run mid-apply can leave infra
+# half-applied and the state lock held; queuing lets it finish instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
 
