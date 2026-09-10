@@ -182,6 +182,9 @@ jobs:
       contents: read
       id-token: write
     strategy:
+        max-parallel: 1 # Forces modules to apply one at a time, in matrix order (01-aks before 02-argocd) - 02-argocd needs the live cluster from 01-aks.
+        # fail-fast left at its true default (unlike infra_plan): if 01-aks's apply
+        # fails, 02-argocd's queued apply should be cancelled, not attempted anyway.
         matrix:
             step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
     defaults:
