@@ -5,8 +5,8 @@ resource "azurerm_resource_group" "resource_group" {
 
 resource "azurerm_storage_account" "terraform_state" {
   name                            = "st${var.project_name}${var.location}"
-  resource_group_name             = azurerm_resource_group.resource_group.name
-  location                        = azurerm_resource_group.resource_group.location
+  resource_group_name             = local.storage_account_resource_group_name
+  location                        = var.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   https_traffic_only_enabled      = true
@@ -30,7 +30,7 @@ resource "azurerm_storage_account" "terraform_state" {
   }
 
   tags = {
-    environment = var.environment
+    environment = "dev" # this resource always belongs to dev (see locals.tf) regardless of which environment applies this module
   }
 
   lifecycle {
