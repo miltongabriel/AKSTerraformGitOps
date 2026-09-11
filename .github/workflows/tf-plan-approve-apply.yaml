@@ -2,7 +2,10 @@ name: 'Terraform Plan and Apply'
 
 on:
   push:
-    branches: [ "main" ]
+    # main = dev; test/prod are promoted-into long-lived branches (see
+    # promote.yml) - resolve-environment below maps whichever branch
+    # triggered this run to its environment name/tfvars/GitHub Environment.
+    branches: [ "main", "test", "prod" ]
     paths:
       - "terraform/**/*.tf"
   workflow_dispatch: {}
@@ -10,12 +13,14 @@ on:
 permissions:
   contents: read
 
-# One run at a time: without this, a second push can start its own
-# infra_plan/infra_apply run while an earlier one is still mid-flight
-# (waiting on dev-apply approval, or applying), so it would plan against
-# state from before the earlier run's apply. cancel-in-progress stays
-# false deliberately - cancelling a run mid-apply can leave infra
-# half-applied and the state lock held; queuing lets it finish instead.
+# One run at a time per branch: without this, a second push to the same
+# branch can start its own infra_plan/infra_apply run while an earlier
+# one is still mid-flight (waiting on <environment>-apply approval, or
+# applying), so it would plan against state from before the earlier
+# run's apply. Keyed by github.ref, so dev/test/prod (main/test/prod)
+# queue independently of each other. cancel-in-progress stays false
+# deliberately - cancelling a run mid-apply can leave infra half-applied
+# and the state lock held; queuing lets it finish instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -91,11 +96,40 @@ jobs:
           echo "changes=$json" >> "$GITHUB_OUTPUT"
           echo "Detected changed Terraform folders: $json"
 
+  resolve-environment:
+    name: 'Resolve Environment'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      # Branch -> environment mapping. "main" maps to "dev" rather than
+      # being named "dev" itself, since renaming the repo's default branch
+      # isn't worth it just for this. Every other job below reads
+      # needs.resolve-environment.outputs.environment instead of a
+      # hardcoded environment name or a single global repo variable, so
+      # the same workflow serves dev/test/prod off of one push trigger.
+      - name: Map branch to environment
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ github.ref_name }}" in
+            main) environment=dev ;;
+            test) environment=test ;;
+            prod) environment=prod ;;
+            *)
+              echo "::error::No environment mapping for branch '${{ github.ref_name }}'" >&2
+              exit 1
+              ;;
+          esac
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "Resolved branch '${{ github.ref_name }}' to environment '$environment'"
+
   infra_plan:
     name: 'Terraform Plan'
-    # Not an approval gate (unlike dev-apply below) - exists only to scope the OIDC federated credential's subject claim to this job.
-    environment: 'dev-plan'
-    needs: detect-changes
+    # Not an approval gate (unlike <environment>-apply below) - exists only to scope the OIDC federated credential's subject claim to this job.
+    environment: '${{ needs.resolve-environment.outputs.environment }}-plan'
+    needs: [detect-changes, resolve-environment]
     # Required: a GitHub Actions matrix errors out entirely (not just skips) if given an empty array.
     if: needs.detect-changes.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
@@ -160,8 +194,8 @@ jobs:
         run: |
           # Same naming convention as terraform/profiles/*.tfconfig, hardcoded here because this workflow doesn't read that file.
           terraform init \
-          -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
-          -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
+          -backend-config="container_name=container-aksgitops-${{ needs.resolve-environment.outputs.environment }}-westcentralus-tfstates" \
+          -backend-config="resource_group_name=rg-aksgitops-${{ needs.resolve-environment.outputs.environment }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
           -backend-config="use_azuread_auth=true" \
           -input=false
@@ -174,7 +208,7 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
+          terraform plan -var-file=../profiles/${{ needs.resolve-environment.outputs.environment }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
           exitcode=$?
           set -e
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
@@ -187,7 +221,7 @@ jobs:
           # touched); this decides which of those plans actually have
           # something to *apply* - a module with a .tf change but a no-op
           # plan (comment/formatting edit, say) should never reach
-          # infra_apply's dev-apply approval gate below. Written here
+          # infra_apply's <environment>-apply approval gate below. Written here
           # directly (not via steps.plan.outputs + a later step) to keep
           # the has_changes decision on the exact same $exitcode value,
           # rather than round-tripping it through a GITHUB_OUTPUT comparison.
@@ -264,12 +298,12 @@ jobs:
     name: 'Terraform Apply'
     # This environment must have "Required reviewers" configured so this job pauses
     # for manual approval. It is deliberately a different environment than
-    # `dev-plan` above, so the unattended plan job is never gated.
-    environment: 'dev-apply'
-    needs: [detect-changes, infra_plan, plan_summary]
+    # `<environment>-plan` above, so the unattended plan job is never gated.
+    environment: '${{ needs.resolve-environment.outputs.environment }}-apply'
+    needs: [detect-changes, resolve-environment, infra_plan, plan_summary]
     # Empty here means no module's plan actually had changes to apply -
-    # skips the dev-apply approval gate entirely rather than asking for a
-    # no-op approval.
+    # skips the <environment>-apply approval gate entirely rather than
+    # asking for a no-op approval.
     if: needs.plan_summary.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
     permissions:
@@ -324,8 +358,8 @@ jobs:
         run: |
           # Same naming convention as terraform/profiles/*.tfconfig, hardcoded here because this workflow doesn't read that file.
           terraform init \
-          -backend-config="container_name=container-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus-tfstates" \
-          -backend-config="resource_group_name=rg-aksgitops-${{ vars.ENVIRONMENT_NAME }}-westcentralus" \
+          -backend-config="container_name=container-aksgitops-${{ needs.resolve-environment.outputs.environment }}-westcentralus-tfstates" \
+          -backend-config="resource_group_name=rg-aksgitops-${{ needs.resolve-environment.outputs.environment }}-westcentralus" \
           -backend-config="storage_account_name=${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}" \
           -backend-config="use_azuread_auth=true" \
           -input=false

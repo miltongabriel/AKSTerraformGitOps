@@ -7,6 +7,14 @@ name: Build and Push App Image
 
 on:
   push:
+    # Deliberately main-only, even though tf-plan-approve-apply.yaml and
+    # ci.yml also run on test/prod - promoting to test/prod (see
+    # promote.yml) must never rebuild the image. It should run the exact
+    # artifact already built and validated in dev; a rebuild per
+    # environment would defeat that. A promotion merge already carries
+    # the correct image tag forward inside k8s/deployment.yaml, since
+    # that file's content (including the tag this job last wrote into
+    # it) is what gets merged from branch to branch.
     branches: [main]
     paths:
       - "app/**"

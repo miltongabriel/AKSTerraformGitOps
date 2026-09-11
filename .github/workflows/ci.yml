@@ -1,11 +1,15 @@
 name: CI
 
-# Validates the repo on every PR and on every push to main. Terraform
-# fmt/validate/plan still lives in tf-plan-approve-apply.yaml, since that
-# needs live Azure auth - but static
+# Validates the repo on every PR and on every push to main/test/prod.
+# Terraform fmt/validate/plan still lives in tf-plan-approve-apply.yaml,
+# since that needs live Azure auth - but static
 # analysis (Checkov) doesn't, so it runs here for PR-time feedback across
 # both Terraform trees (terraform/ and bootstrap/), instead of only showing up
-# after merge in that pipeline's plan step.
+# after merge in that pipeline's plan step. The push trigger covers all
+# three long-lived branches (not just main) so a promotion merge (see
+# promote.yml) gets the same direct-push linting main already gets -
+# though in practice a promotion PR is already linted by the pull_request
+# trigger above before it's ever merged.
 
 on:
   pull_request:
@@ -16,7 +20,7 @@ on:
       - "bootstrap/**/*.tf"
       - ".github/workflows/ci.yml"
   push:
-    branches: ["main"]
+    branches: ["main", "test", "prod"]
     paths:
       - "app/**"
       - "k8s/**"
