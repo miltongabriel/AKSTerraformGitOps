@@ -39,4 +39,5 @@ argocd_namespace        = "argocd"
 argocd_project_repo_url = "git@github.com:miltongabriel/AKSTerraformGitOps.git"
 argocd_project_path     = "k8s"
 argocd_project_name     = "webapp"
+argocd_target_revision  = "main" # this environment's branch - dev tracks main directly
 # argocd_chart_version not set - defaults to a pinned known-good version

@@ -39,4 +39,5 @@ argocd_namespace        = "argocd"
 argocd_project_repo_url = "git@github.com:organization/repository.git"
 argocd_project_path     = "argocd"
 argocd_project_name     = "webapp"
+argocd_target_revision  = "main" # this environment's branch - "main" for dev, or a promoted environment's own branch (e.g. "test"/"prod")
 # argocd_chart_version not set - defaults to a pinned known-good version

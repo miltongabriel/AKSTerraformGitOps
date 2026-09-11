@@ -52,7 +52,7 @@ resource "kubectl_manifest" "argocd_root_app" {
       project: ${var.argocd_project_name}
       source:
         repoURL: '${var.argocd_project_repo_url}'
-        targetRevision: HEAD
+        targetRevision: ${var.argocd_target_revision}
         path: '${var.argocd_project_path}'
       destination:
         server: 'https://kubernetes.default.svc'

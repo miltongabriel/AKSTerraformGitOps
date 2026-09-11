@@ -39,6 +39,11 @@ variable "argocd_project_path" {
   type        = string
 }
 
+variable "argocd_target_revision" {
+  description = "Git branch this environment's root Application tracks - \"main\" for dev, or a promoted environment's own long-lived branch (e.g. \"test\"/\"prod\")."
+  type        = string
+}
+
 variable "argocd_chart_version" {
   description = "Version of the argo/argo-cd Helm chart to install (pinned for reproducible deploys)"
   type        = string
