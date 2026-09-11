@@ -24,7 +24,7 @@ gh_plan_environment      = "dev-plan"
 registry_app_name        = "gh-actions-gbenettiregistry"
 terraform_apply_app_name = "gh-actions-terraform-apply-dev"
 terraform_plan_app_name  = "gh-actions-terraform-plan-dev"
-operator_aad_object_ids  = ["0820b7c1-f351-4b2a-b21d-cd704bd3192d"]
+operator_aad_object_ids  = ["74a8e0a7-e567-40b2-bae2-9bad642770fd"]
 
 # terraform/01-aks
 aks_default_node_pool_vm_size = "Standard_B2pls_v2" # cheapest found in free tier - k8s/deployment.yaml's resource requests/limits are sized to fit it
