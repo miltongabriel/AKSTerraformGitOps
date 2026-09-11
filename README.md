@@ -62,7 +62,7 @@ AKSTerraformGitOps/
 │   ├── run.sh                               # Helper: `init` + `apply` one step for a given environment
 │   └── destroy.sh                           # Helper: `destroy` every step
 │
-├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push image), ci.yml (app/ tests + k8s/ lint), tf-plan-approve-apply.yaml (terraform/ plan+apply)
+├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push image), ci.yml (app/ tests + k8s/ lint), tf-plan-approve-apply.yaml (terraform/ plan+apply), promote.yml (dev→test→prod PR)
 ├── argocd-ssh-key / argocd-ssh-key.pub  # SSH keypair ArgoCD uses to read this repo (git-ignored)
 └── .gitignore
 ```
@@ -155,6 +155,19 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 > It's recommended to change the `admin` password after the first login (`argocd account update-password`), since it stays in the secret until changed.
 
+### Multi-environment promotion (dev → test → prod)
+
+`main` **is** the `dev` environment. `test`/`prod` are long-lived branches, each mapping to its own environment ([`tf-plan-approve-apply.yaml`](.github/workflows/tf-plan-approve-apply.yaml)'s `resolve-environment` job), its own AKS cluster + ArgoCD install, and its own root Application tracking that branch (`argocd_target_revision`). Promoting is opening a PR that merges one branch into the next — since Terraform code and `k8s/deployment.yaml` (image tag included) live at the same paths on every branch, that merge diff *is* the promotion, covering infra and the app together:
+
+```bash
+gh workflow run promote.yml -f target=test   # opens a PR: main -> test
+gh workflow run promote.yml -f target=prod   # opens a PR: test -> prod
+```
+
+Review and merge the PR to actually promote; merging triggers `tf-plan-approve-apply.yaml` on the target branch, gated by that environment's own `<environment>-apply` approval, and that environment's ArgoCD picks up the merged manifest automatically. `build-push-app.yml` deliberately stays `main`-only — an environment always runs the exact image already built and validated in `dev`, never a per-environment rebuild.
+
+To actually stand up `test` or `prod` (this repo ships only `dev` today): create the branch, copy `terraform/profiles/example.tfvars`/`.tfconfig` to `<env>.tfvars`/`.tfconfig` and fill them in (including `argocd_target_revision = "<env>"`), run `bootstrap/90-identities` with `environment=<env>` (see [Bootstrap](#bootstrap-one-time-manual-setup) above), then create that environment's `<env>-plan`/`<env>-apply` GitHub Environments from its `github_secrets_setup` output — add required reviewers on `<env>-apply` (stricter for `prod`), and branch protection on `<env>` requiring PR review, so nothing lands there except through `promote.yml`.
+
 ### What we learned from this project
 
 - **Layered Terraform steps** (manual `bootstrap/00-backend` → `01-registry` → `02-keyvault` → `90-identities`, then pipeline-managed `terraform/01-aks` → `02-argocd`) separate concerns and shrink the blast radius: destroying/recreating the app layer doesn't touch the cluster, and destroying the cluster doesn't touch the state backend.
@@ -176,7 +189,7 @@ Ideas to take this lab further, roughly in suggested order:
 1. ~~Lint/scan `bootstrap/` too~~ — the "scan" half is done: `ci.yml`'s `terraform-checkov` job already runs Checkov against the whole repo root, not just `terraform/`. `terraform fmt -check`/`terraform validate` for `bootstrap/` specifically is still open (`tf-plan-approve-apply.yaml`'s fmt/validate only covers `terraform/`, since `bootstrap/` is deliberately outside its reach).
 2. **Container/manifest security scanning in CI** — `tfsec`/`checkov` on the Terraform code is done (see above); `trivy`/`kube-score` on the `k8s/` manifests is still open.
 3. ~~Proper secrets management for the ArgoCD SSH deploy key~~ — done: `bootstrap/02-keyvault` now stores it in Azure Key Vault, and `terraform/02-argocd` reads it via `data "azurerm_key_vault_secret"` instead of `file()`. `subscription_id`/`tenant_id` no longer sit in a tracked file either — `run.sh`/`destroy.sh` and the CI workflow supply them as `TF_VAR_*` from `az account show`/existing OIDC secrets.
-4. **Multi-environment promotion** — the `profiles/` pattern already supports it; add `test`/`prod` tfvars plus an ArgoCD `ApplicationSet` (or separate root apps) so a change promotes dev → test → prod through Git branches/PRs instead of one static `dev` environment.
+4. ~~Multi-environment promotion~~ — the wiring is done: `main`/`test`/`prod` branches each map to their own environment (`tf-plan-approve-apply.yaml`'s `resolve-environment` job), each with its own separate root Application (`terraform/02-argocd`'s `argocd_target_revision` variable, no `ApplicationSet` needed since every environment already gets its own cluster and its own ArgoCD install), and [`promote.yml`](.github/workflows/promote.yml) opens the `main → test`/`test → prod` PR — merging it promotes Terraform and the `k8s/` manifest together, as one diff. Actually standing up `test`/`prod` (running `bootstrap/90-identities` again, writing real `test.tfvars`/`prod.tfvars`, creating the matching GitHub Environments) is a manual, cost-incurring step left for whenever it's worth it — same as `dev`'s own bootstrap.
 5. ~~Workload Identity / Azure AD RBAC~~ — done: `terraform/01-aks` enables `azure_active_directory_role_based_access_control` + `local_account_disabled = true`, and the Terraform `kubernetes`/`helm`/`kubectl` providers in `02-argocd` authenticate via `exec` + `kubelogin` (`azurecli` mode) instead of a client certificate. The cluster's OIDC issuer + workload-identity webhook (`oidc_issuer_enabled`/`workload_identity_enabled`) are also on now, but nothing in-cluster consumes them yet — **pod-level Azure Workload Identity for a real workload** (e.g. migrating ArgoCD's repo-secret sourcing off the Terraform-seeded `kubernetes_secret_v1` to a live fetch via a federated identity) is the natural follow-up, deliberately left open.
 
 ---
@@ -227,7 +240,7 @@ AKSTerraformGitOps/
 │   ├── run.sh                               # Helper: `init` + `apply` de um step para um ambiente
 │   └── destroy.sh                           # Helper: `destroy` de todos os steps
 │
-├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push da imagem), ci.yml (testes do app/ + lint do k8s/), tf-plan-approve-apply.yaml (plan+apply do terraform/)
+├── .github/workflows/                   # CI/CD: build-push-app.yml (build+push da imagem), ci.yml (testes do app/ + lint do k8s/), tf-plan-approve-apply.yaml (plan+apply do terraform/), promote.yml (PR dev→test→prod)
 ├── argocd-ssh-key / argocd-ssh-key.pub  # Par de chaves SSH usado pelo ArgoCD p/ ler este repositório (git-ignoradas)
 └── .gitignore
 ```
@@ -320,6 +333,19 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 > Recomendado trocar a senha do `admin` após o primeiro login (`argocd account update-password`), já que ela fica no secret até ser alterada.
 
+### Promoção multi-ambiente (dev → test → prod)
+
+A `main` **é** o ambiente `dev`. `test`/`prod` são branches de longa duração, cada uma mapeada para seu próprio ambiente (job `resolve-environment` do [`tf-plan-approve-apply.yaml`](.github/workflows/tf-plan-approve-apply.yaml)), seu próprio cluster AKS + instalação do ArgoCD, e sua própria root Application acompanhando aquela branch (`argocd_target_revision`). Promover é abrir um PR que faz merge de uma branch na próxima — como o código Terraform e o `k8s/deployment.yaml` (tag de imagem incluída) vivem nos mesmos caminhos em toda branch, esse diff de merge **é** a promoção, cobrindo infra e app juntos:
+
+```bash
+gh workflow run promote.yml -f target=test   # abre um PR: main -> test
+gh workflow run promote.yml -f target=prod   # abre um PR: test -> prod
+```
+
+Revisar e dar merge no PR é o que de fato promove; o merge dispara o `tf-plan-approve-apply.yaml` na branch de destino, com o gate de aprovação `<ambiente>-apply` daquele ambiente, e o ArgoCD daquele ambiente pega o manifest mergeado automaticamente. O `build-push-app.yml` fica de propósito só na `main` — um ambiente sempre roda a imagem exata já construída e validada no `dev`, nunca um rebuild por ambiente.
+
+Para de fato colocar `test` ou `prod` de pé (esse repositório hoje só tem o `dev`): criar a branch, copiar `terraform/profiles/example.tfvars`/`.tfconfig` para `<env>.tfvars`/`.tfconfig` e preenchê-los (incluindo `argocd_target_revision = "<env>"`), rodar o `bootstrap/90-identities` com `environment=<env>` (veja [Bootstrap](#bootstrap-configuração-manual-única) acima), depois criar os GitHub Environments `<env>-plan`/`<env>-apply` daquele ambiente a partir do output `github_secrets_setup` — adicionar reviewers obrigatórios no `<env>-apply` (mais rígido para `prod`), e proteção de branch no `<env>` exigindo revisão de PR, para que nada chegue lá a não ser pelo `promote.yml`.
+
 ### O que aprendemos com esse projeto
 
 - **Terraform em camadas/steps** (`bootstrap/00-backend` → `01-registry` → `02-keyvault` → `90-identities` manuais, depois `terraform/01-aks` → `02-argocd` gerenciados pelo pipeline) separa responsabilidades e reduz o "raio de explosão": destruir/recriar a aplicação não afeta o cluster, e destruir o cluster não afeta o backend do state.
@@ -341,5 +367,5 @@ Ideias para evoluir esse laboratório, em ordem sugerida:
 1. ~~Lint/scan também no `bootstrap/`~~ — a parte de "scan" está feita: o job `terraform-checkov` do `ci.yml` já roda o Checkov contra a raiz inteira do repositório, não só `terraform/`. `terraform fmt -check`/`terraform validate` para o `bootstrap/` especificamente ainda está em aberto (o fmt/validate do `tf-plan-approve-apply.yaml` só cobre `terraform/`, já que `bootstrap/` fica de propósito fora do alcance dele).
 2. **Scan de segurança de containers/manifests no CI** — `tfsec`/`checkov` no código Terraform já está feito (ver acima); `trivy`/`kube-score` nos manifests do `k8s/` segue em aberto.
 3. ~~Gestão de segredos de verdade para a chave SSH do ArgoCD~~ — feito: `bootstrap/02-keyvault` agora guarda a chave no Azure Key Vault, e `terraform/02-argocd` lê o valor via `data "azurerm_key_vault_secret"` em vez de `file()`. `subscription_id`/`tenant_id` também não estão mais em arquivo versionado — `run.sh`/`destroy.sh` e o workflow de CI fornecem eles como `TF_VAR_*` a partir do `az account show`/dos secrets OIDC já existentes.
-4. **Promoção multi-ambiente** — o padrão `profiles/` já suporta isso; adicionar tfvars de `test`/`prod` e um `ApplicationSet` do ArgoCD (ou root apps separadas) para que uma mudança seja promovida dev → test → prod via branches/PRs no Git, em vez de um único ambiente `dev` estático.
+4. ~~Promoção multi-ambiente~~ — a parte de conexão está feita: as branches `main`/`test`/`prod` mapeiam cada uma para seu próprio ambiente (job `resolve-environment` do `tf-plan-approve-apply.yaml`), cada uma com sua própria root Application separada (variável `argocd_target_revision` do `terraform/02-argocd` — sem precisar de `ApplicationSet`, já que cada ambiente já ganha seu próprio cluster e sua própria instalação do ArgoCD), e o [`promote.yml`](.github/workflows/promote.yml) abre o PR `main → test`/`test → prod` — dar merge nele promove o Terraform e o manifest do `k8s/` juntos, como um único diff. Provisionar de fato o `test`/`prod` (rodar o `bootstrap/90-identities` de novo, escrever `test.tfvars`/`prod.tfvars` reais, criar os GitHub Environments correspondentes) é um passo manual, com custo, deixado para quando fizer sentido — igual ao bootstrap que o próprio `dev` teve.
 5. ~~Workload Identity / Azure AD RBAC~~ — feito: `terraform/01-aks` habilita `azure_active_directory_role_based_access_control` + `local_account_disabled = true`, e os providers `kubernetes`/`helm`/`kubectl` do Terraform em `02-argocd` se autenticam via `exec` + `kubelogin` (modo `azurecli`) em vez de certificado de cliente. O OIDC issuer + o webhook de workload identity do cluster (`oidc_issuer_enabled`/`workload_identity_enabled`) também já estão ligados, mas nada dentro do cluster os usa ainda — **Workload Identity no nível de pod para uma carga de trabalho real** (ex.: migrar a origem do secret do repositório do ArgoCD, hoje seedado pelo Terraform via `kubernetes_secret_v1`, para uma busca ao vivo via identidade federada) é o próximo passo natural, deixado em aberto de propósito.
