@@ -12,6 +12,11 @@ if [[ ! -d "${TF_PLUGIN_CACHE_DIR}" ]]; then
   mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 fi
 
+# subscription_id/tenant_id are supplied via TF_VAR_* instead of a tracked
+# tfvars file - derive them from the active `az login` session.
+export TF_VAR_subscription_id="$(az account show --query id -o tsv)"
+export TF_VAR_tenant_id="$(az account show --query tenantId -o tsv)"
+
 if [[ -z "${ENVIRONMENT}" ]]; then
   echo "Error: ENVIRONMENT is not set. Please provide the environment name."
   exit 1

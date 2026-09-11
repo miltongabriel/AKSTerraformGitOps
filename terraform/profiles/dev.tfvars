@@ -1,7 +1,10 @@
 # Used by every step
-subscription_id = "00000000-0000-0000-0000-000000000000"
-tenant_id       = "00000000-0000-0000-0000-000000000000"
-location        = "westcentralus"
+# subscription_id/tenant_id are NOT set here - they're supplied via
+# TF_VAR_subscription_id/TF_VAR_tenant_id (CI: from the AZURE_SUBSCRIPTION_ID/
+# AZURE_TENANT_ID secrets already used for azure/login; locally: run.sh
+# exports them from `az account show`), so these values never need to sit in
+# a tracked file. See README.md's Deployment step 2 warning for why.
+location = "westcentralus"
 
 # Used by every step except bootstrap/01-registry
 environment  = "dev"
