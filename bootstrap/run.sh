@@ -36,7 +36,12 @@ cd "${STEP_DIR}"
 if [[ "${STEP_DIR}" == "00-backend"* ]]; then
   # The only step with no remote backend to point at yet — it's the one that
   # creates the storage account every other step (here and in terraform/) uses.
-  terraform init -reconfigure
+  # State is isolated per environment (path=<environment>.tfstate): this
+  # step's resource group IS per-environment even though the storage account
+  # itself is shared, so reusing one local state file across environments
+  # would make Terraform think the previous environment's resource group
+  # (and its tfstate container) needs replacing.
+  terraform init -reconfigure -backend-config="path=${ENVIRONMENT}.tfstate"
 else
   terraform init -compact-warnings -reconfigure --backend-config=../../terraform/profiles/${ENVIRONMENT}.tfconfig
 fi
