@@ -171,11 +171,25 @@ jobs:
           terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
           exitcode=$?
           set -e
-          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
           # Only a real error should fail this step - 2 just means there's something to apply.
           if [ "$exitcode" -eq 1 ]; then
             exit 1
+          fi
+
+          # detect-changes decides which modules get *planned* (any .tf file
+          # touched); this decides which of those plans actually have
+          # something to *apply* - a module with a .tf change but a no-op
+          # plan (comment/formatting edit, say) should never reach
+          # infra_apply's dev-apply approval gate below. Written here
+          # directly (not via steps.plan.outputs + a later step) to keep
+          # the has_changes decision on the exact same $exitcode value,
+          # rather than round-tripping it through a GITHUB_OUTPUT comparison.
+          mkdir -p plan-result
+          if [ "$exitcode" -eq 2 ]; then
+            echo "true" > plan-result/has_changes
+          else
+            echo "false" > plan-result/has_changes
           fi
 
       - name: Publish Plan to Job Summary
@@ -193,15 +207,6 @@ jobs:
           name: tfplan-${{ matrix.step }}
           path: terraform/${{ matrix.step }}/tfplan
           retention-days: 1 # Keep it short-lived for security
-
-      # detect-changes decides which modules get *planned* (any .tf file touched);
-      # this decides which of those plans actually have something to *apply* - a
-      # module with a .tf change but a no-op plan (comment/formatting edit, say)
-      # should never reach infra_apply's dev-apply approval gate below.
-      - name: Record Plan Result
-        run: |
-          mkdir -p plan-result
-          echo "${{ steps.plan.outputs.exitcode == '2' && 'true' || 'false' }}" > plan-result/has_changes
 
       # upload-artifact's `path` isn't affected by this job's working-directory
       # default (unlike `run:` steps) - has to be spelled out in full, same as
