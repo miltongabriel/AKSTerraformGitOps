@@ -47,8 +47,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   tags = {
-    environment = var.environment
-    project     = var.project_name
+    environment   = var.environment
+    project       = var.project_name
+    pipeline_test = "true" # TEMP: verifies a real plan diff still reaches dev-apply - reverted right after
   }
 }
 
