@@ -1,0 +1,47 @@
+name: 'Promote Environment'
+
+# Promotion = opening a PR that merges one long-lived branch into the
+# next (main -> test -> prod). Since every environment's Terraform code
+# AND its k8s/deployment.yaml live at the same paths on every branch,
+# that merge diff *is* the promotion - whatever image tag/Terraform
+# changes are on the source branch become the target's, with nothing
+# environment-specific to special-case here. Merging the PR triggers
+# tf-plan-approve-apply.yaml (gated by that environment's own
+# <environment>-apply approval) and lets that environment's own ArgoCD
+# (tracking its own branch) pick up the new k8s/deployment.yaml.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Environment to promote into'
+        required: true
+        type: choice
+        options: [test, prod]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-promotion-pr:
+    name: 'Open Promotion PR'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Open promotion PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          case "${{ inputs.target }}" in
+            test) source=main ;;
+            prod) source=test ;;
+          esac
+
+          gh pr create --base "${{ inputs.target }}" --head "$source" \
+            --title "Promote $source -> ${{ inputs.target }}" \
+            --body "Automated promotion PR. Review the diff, then merge to deploy to **${{ inputs.target }}**." \
+            || echo "Nothing to promote (branches already match, or a PR is already open)."
