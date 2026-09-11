@@ -171,6 +171,7 @@ jobs:
           terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
           exitcode=$?
           set -e
+          echo "DEBUG: terraform plan -detailed-exitcode returned [$exitcode]"
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
           # Only a real error should fail this step - 2 just means there's something to apply.
           if [ "$exitcode" -eq 1 ]; then
