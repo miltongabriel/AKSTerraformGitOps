@@ -1,5 +1,3 @@
-# TEMP: comment-only edit to test that a .tf change with a no-op plan
-# skips infra_apply/dev-apply entirely - remove this comment once verified.
 output "Access_credentials" {
   value = "az aks get-credentials --resource-group ${azurerm_kubernetes_cluster.aks.resource_group_name} --name ${azurerm_kubernetes_cluster.aks.name} && kubelogin convert-kubeconfig -l azurecli"
 }
