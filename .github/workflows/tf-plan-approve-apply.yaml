@@ -166,7 +166,17 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -out=tfplan
+        run: |
+          set +e
+          terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
+          exitcode=$?
+          set -e
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+          # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
+          # Only a real error should fail this step - 2 just means there's something to apply.
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Publish Plan to Job Summary
         run: |
@@ -184,15 +194,68 @@ jobs:
           path: terraform/${{ matrix.step }}/tfplan
           retention-days: 1 # Keep it short-lived for security
 
+      # detect-changes decides which modules get *planned* (any .tf file touched);
+      # this decides which of those plans actually have something to *apply* - a
+      # module with a .tf change but a no-op plan (comment/formatting edit, say)
+      # should never reach infra_apply's dev-apply approval gate below.
+      - name: Record Plan Result
+        run: |
+          mkdir -p plan-result
+          echo "${{ steps.plan.outputs.exitcode == '2' && 'true' || 'false' }}" > plan-result/has_changes
+
+      - name: Upload Plan Result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plan-result-${{ matrix.step }}
+          path: plan-result/has_changes
+          retention-days: 1
+
+  plan_summary:
+    name: 'Summarize Plan Results'
+    needs: [detect-changes, infra_plan]
+    # Same empty-matrix-source guard as infra_plan above.
+    if: needs.detect-changes.outputs.changed_folders != '[]'
+    runs-on: ubuntu-latest
+    outputs:
+      changed_folders: ${{ steps.summarize.outputs.changed_folders }}
+    steps:
+      # No checkout/Azure login needed - this job only reads infra_plan's
+      # per-module "did this plan have changes" artifacts.
+      - name: Download Plan Results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: plan-result-*
+          path: plan-results
+
+      - name: Summarize
+        id: summarize
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          folders=()
+          for dir in plan-results/plan-result-*/; do
+            step="$(basename "$dir" | sed 's/^plan-result-//')"
+            if [ "$(cat "${dir}has_changes")" = "true" ]; then
+              folders+=("$step")
+            fi
+          done
+
+          json=$(printf '%s\n' "${folders[@]-}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "changed_folders=$json" >> "$GITHUB_OUTPUT"
+          echo "Modules with real plan changes: $json"
+
   infra_apply:
     name: 'Terraform Apply'
-    # This environment must have "Required reviewers" configured so this job pauses 
+    # This environment must have "Required reviewers" configured so this job pauses
     # for manual approval. It is deliberately a different environment than
     # `dev-plan` above, so the unattended plan job is never gated.
     environment: 'dev-apply'
-    needs: [detect-changes, infra_plan]
-    # Same empty-matrix guard as infra_plan above.
-    if: needs.detect-changes.outputs.changed_folders != '[]'
+    needs: [detect-changes, infra_plan, plan_summary]
+    # Empty here means no module's plan actually had changes to apply -
+    # skips the dev-apply approval gate entirely rather than asking for a
+    # no-op approval.
+    if: needs.plan_summary.outputs.changed_folders != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -202,7 +265,7 @@ jobs:
         # fail-fast left at its true default (unlike infra_plan): if 01-aks's apply
         # fails, 02-argocd's queued apply should be cancelled, not attempted anyway.
         matrix:
-            step: ${{ fromJSON(needs.detect-changes.outputs.changed_folders) }}
+            step: ${{ fromJSON(needs.plan_summary.outputs.changed_folders) }}
     defaults:
       run:
         shell: bash
