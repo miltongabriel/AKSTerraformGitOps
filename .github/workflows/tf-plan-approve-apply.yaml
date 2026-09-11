@@ -203,11 +203,15 @@ jobs:
           mkdir -p plan-result
           echo "${{ steps.plan.outputs.exitcode == '2' && 'true' || 'false' }}" > plan-result/has_changes
 
+      # upload-artifact's `path` isn't affected by this job's working-directory
+      # default (unlike `run:` steps) - has to be spelled out in full, same as
+      # Upload Plan Artifact above, or it looks for the file at repo root and
+      # silently uploads nothing.
       - name: Upload Plan Result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: plan-result-${{ matrix.step }}
-          path: plan-result/has_changes
+          path: terraform/${{ matrix.step }}/plan-result/has_changes
           retention-days: 1
 
   plan_summary:
