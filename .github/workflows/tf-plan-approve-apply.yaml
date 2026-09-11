@@ -139,6 +139,12 @@ jobs:
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: "1.15.8"
+          # The default wrapper collapses -detailed-exitcode's distinct
+          # 0/1/2 down to plain 0/1 (it only ever propagates success/failure,
+          # not "succeeded with changes") - confirmed live: a real plan diff
+          # still reported $? as 0 through the wrapper. Terraform Plan below
+          # needs the real exit code to tell a no-op plan from a real one.
+          terraform_wrapper: false
 
       - name: Terraform Format
         id: fmt
@@ -171,7 +177,6 @@ jobs:
           terraform plan -var-file=../profiles/${{ vars.ENVIRONMENT_NAME }}.tfvars -input=false -no-color -lock=false -detailed-exitcode -out=tfplan
           exitcode=$?
           set -e
-          echo "DEBUG: terraform plan -detailed-exitcode returned [$exitcode]"
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
           # Only a real error should fail this step - 2 just means there's something to apply.
           if [ "$exitcode" -eq 1 ]; then
